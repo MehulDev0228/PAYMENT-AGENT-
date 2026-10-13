@@ -1,0 +1,9 @@
+{
+  "name": "AERA — Daily Collection Monitor",
+  "nodes": [
+    { "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 7 * * *" }] } }, "id": "schedule-daily-monitor", "name": "Every day at 07:00", "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [240, 300] },
+    { "parameters": { "method": "POST", "url": "={{ $env.AERA_BASE_URL + '/api/automation/daily-monitor' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-company-id", "value": "={{ $env.AERA_COMPANY_ID }}" }, { "name": "authorization", "value": "={{ 'Bearer ' + $env.AERA_INTERNAL_API_TOKEN }}" }] }, "options": {} }, "id": "run-monitor", "name": "Evaluate collection policy", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [500, 300] }
+  ],
+  "connections": { "Every day at 07:00": { "main": [[{ "node": "Evaluate collection policy", "type": "main", "index": 0 }]] } },
+  "pinData": {}, "settings": { "executionOrder": "v1", "timezone": "Asia/Kolkata" }, "active": false, "versionId": "1f590f50-07c0-4f43-8c73-15e4ee144d01"
+}

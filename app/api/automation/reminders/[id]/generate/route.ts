@@ -1,0 +1,5 @@
+import { NextResponse } from "next/server";
+import { getRequestContext } from "@/lib/auth";
+import { repository } from "@/lib/data";
+import { generateReminder } from "@/lib/ai/communication";
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) { try { const context = getRequestContext(request); const { id } = await params; const action = repository.listActions(context.companyId).find((item) => item.id === id); if (!action) return NextResponse.json({ error: "Action not found" }, { status: 404 }); const invoice = repository.getInvoice(context.companyId, action.invoiceId)!; const customer = repository.getCustomer(context.companyId, action.customerId)!; const tone = String(action.dataSnapshot.tone || "friendly") as "friendly" | "firm" | "urgent"; const generated = await generateReminder({ customer, invoice, tone }); return NextResponse.json({ ...generated, actionId: action.id, customerEmail: customer.email, customerName: customer.name, invoiceNumber: invoice.invoiceNumber }); } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Generation failed" }, { status: 400 }); } }

@@ -1,0 +1,119 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * AERA design language
+ * Near-black ink, a single saturated "ledger green" signal colour, generous
+ * negative tracking on display type and mono eyebrows for system labels.
+ */
+:root {
+  --ink: #0a0c10;
+  --ink-2: #111419;
+  --ink-3: #191d24;
+  --ink-line: #262b34;
+  --canvas: #f4f5f7;
+  --surface: #ffffff;
+  --line: #e3e6eb;
+  --line-strong: #cdd2da;
+  --text: #0a0c10;
+  --muted: #5b6270;
+  --brand: #0a8f5f;
+  --brand-strong: #066f49;
+  --brand-soft: #e5f5ed;
+  --glow: #3fe29d;
+  --lime: #e3f3bb;
+  --lime-ink: #233512;
+  --success: #067a4c;
+  --warning: #a35d06;
+  --danger: #c22c1d;
+  --info: #2b58c2;
+  --violet: #6a3fcf;
+
+  /* Channel tokens so Tailwind opacity modifiers (bg-ink/40) work. */
+  --ink-rgb: 10 12 16;
+  --ink-2-rgb: 17 20 25;
+  --ink-3-rgb: 25 29 36;
+  --ink-line-rgb: 38 43 52;
+  --canvas-rgb: 244 245 247;
+  --surface-rgb: 255 255 255;
+  --line-rgb: 227 230 235;
+  --line-strong-rgb: 205 210 218;
+  --muted-rgb: 91 98 112;
+  --brand-rgb: 10 143 95;
+  --brand-strong-rgb: 6 111 73;
+  --brand-soft-rgb: 229 245 237;
+  --glow-rgb: 63 226 157;
+  --lime-rgb: 227 243 187;
+  --lime-ink-rgb: 35 53 18;
+  --success-rgb: 6 122 76;
+  --warning-rgb: 163 93 6;
+  --danger-rgb: 194 44 29;
+  --info-rgb: 43 88 194;
+  --violet-rgb: 106 63 207;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--canvas); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
+body { margin: 0; color: var(--text); background: var(--canvas); font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif; letter-spacing: -0.011em; }
+a { color: inherit; text-decoration: none; }
+button, input, select, textarea { font: inherit; letter-spacing: inherit; }
+button, a, summary, label[for], select { -webkit-tap-highlight-color: transparent; }
+button:not(:disabled), a, summary, select { cursor: pointer; }
+:where(a, button, summary, select, [tabindex]):focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+::selection { background: color-mix(in srgb, var(--glow) 45%, transparent); }
+
+@layer components {
+  .eyebrow { @apply font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted; }
+  .eyebrow-dot { @apply inline-flex items-center gap-2; }
+  .eyebrow-dot::before { content: ""; @apply size-1.5 rounded-full bg-[var(--glow)]; }
+
+  .display { @apply font-medium tracking-[-0.045em]; line-height: 0.98; }
+  .title { @apply text-[28px] font-medium leading-[1.08] tracking-[-0.035em] md:text-[34px]; }
+  .title-muted { @apply text-[color:var(--muted)]; }
+
+  .panel { @apply rounded-2xl border border-line bg-surface; box-shadow: 0 1px 0 rgb(10 12 16 / 0.03), 0 12px 32px -18px rgb(10 12 16 / 0.12); }
+  .panel-dark { @apply rounded-2xl border border-white/[0.07] bg-ink-2 text-white; }
+  .panel-head { @apply flex items-center justify-between gap-4 border-b border-line px-5 py-4; }
+
+  .btn { @apply inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-[10px] px-4 text-sm font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 ease-out active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45; }
+  .btn-primary { @apply btn bg-ink text-white hover:bg-ink-3; }
+  .btn-brand { @apply btn bg-brand text-white hover:bg-brand-strong; }
+  .btn-light { @apply btn bg-white text-ink shadow-[0_1px_0_rgb(255_255_255/0.5)_inset,0_6px_16px_-8px_rgb(0_0_0/0.4)] hover:bg-white/90; }
+  .btn-outline { @apply btn border border-line bg-surface text-ink hover:border-line-strong hover:bg-canvas; }
+  .btn-ghost { @apply btn text-muted hover:bg-black/[0.04] hover:text-ink; }
+  .btn-sm { @apply min-h-8 rounded-lg px-3 text-[13px]; }
+
+  .input { @apply min-h-10 w-full rounded-[10px] border border-line bg-surface px-3 text-sm text-ink outline-none transition-colors placeholder:text-[#8a909c] hover:border-line-strong focus:border-ink focus:ring-4 focus:ring-black/[0.06]; }
+
+  .table-base { @apply w-full border-collapse text-left text-sm; }
+  .table-base thead th { @apply border-b border-line bg-[#fafbfc] px-4 py-2.5 font-mono text-[10.5px] font-medium uppercase tracking-[0.12em] text-muted first:pl-5 last:pr-5; }
+  .table-base tbody td { @apply border-b border-line/70 px-4 py-3.5 align-middle first:pl-5 last:pr-5; }
+  .table-base tbody tr { @apply transition-colors hover:bg-[#fafbfc]; }
+  .table-base tbody tr:last-child td { @apply border-b-0; }
+
+  .tabular { font-variant-numeric: tabular-nums; }
+  .scrollbar { scrollbar-color: #cbd1d9 transparent; scrollbar-width: thin; }
+
+  /* Marketing surfaces */
+  .hero-field {
+    background:
+      radial-gradient(70% 55% at 50% 0%, rgb(63 226 157 / 0.55) 0%, rgb(63 226 157 / 0) 60%),
+      radial-gradient(120% 80% at 50% 0%, #0d9a66 0%, #08724c 42%, #054331 78%, #04281f 100%);
+  }
+  .grid-lines {
+    background-image: linear-gradient(rgb(255 255 255 / 0.05) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.05) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(80% 60% at 50% 30%, black, transparent);
+  }
+  .glass-nav { @apply border border-white/10 bg-[#0b0e12]/70 text-white backdrop-blur-xl; box-shadow: 0 10px 30px -12px rgb(0 0 0 / 0.5), inset 0 1px 0 rgb(255 255 255 / 0.06); }
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.animate-rise { animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.animate-pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+}

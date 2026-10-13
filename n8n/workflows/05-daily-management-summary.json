@@ -1,0 +1,10 @@
+{
+  "name": "AERA — Daily Management Summary",
+  "nodes": [
+    { "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 18 * * 1-5" }] } }, "id": "summary-schedule", "name": "Weekdays at 18:00", "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [220, 300] },
+    { "parameters": { "url": "={{ $env.AERA_BASE_URL + '/api/automation/summary' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-company-id", "value": "={{ $env.AERA_COMPANY_ID }}" }, { "name": "authorization", "value": "={{ 'Bearer ' + $env.AERA_INTERNAL_API_TOKEN }}" }] }, "options": {} }, "id": "fetch-summary", "name": "Fetch verified metrics", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [460, 300] },
+    { "parameters": { "sendTo": "={{ $env.AERA_MANAGER_EMAIL }}", "subject": "AERA daily collections summary", "message": "={{ 'Daily collections summary\n\nOutstanding: ₹' + $json.overview.totalOutstanding.toLocaleString('en-IN') + '\nOverdue: ₹' + $json.overview.totalOverdue.toLocaleString('en-IN') + '\nOverdue invoices: ' + $json.overview.overdueInvoiceCount + '\nActive promises: ' + $json.overview.activePromiseCount + '\nMissed promises: ' + $json.overview.missedPromiseCount + '\nAwaiting approval: ' + $json.awaitingApproval + '\n\nThis is a factual operational summary. No financial decisions were made.' }}", "options": {} }, "id": "send-summary", "name": "Email authorized manager", "type": "n8n-nodes-base.gmail", "typeVersion": 2.1, "position": [700, 300] }
+  ],
+  "connections": { "Weekdays at 18:00": { "main": [[{ "node": "Fetch verified metrics", "type": "main", "index": 0 }]] }, "Fetch verified metrics": { "main": [[{ "node": "Email authorized manager", "type": "main", "index": 0 }]] } },
+  "pinData": {}, "settings": { "executionOrder": "v1", "timezone": "Asia/Kolkata" }, "active": false, "versionId": "706e47bc-8bde-4793-af01-1737ba004405"
+}

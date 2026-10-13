@@ -1,0 +1,9 @@
+{
+  "name": "AERA — Payment Promise Monitor",
+  "nodes": [
+    { "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "30 8 * * *" }] } }, "id": "promise-schedule", "name": "Every day at 08:30", "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [240, 300] },
+    { "parameters": { "method": "POST", "url": "={{ $env.AERA_BASE_URL + '/api/automation/promises/check' }}", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "x-company-id", "value": "={{ $env.AERA_COMPANY_ID }}" }, { "name": "authorization", "value": "={{ 'Bearer ' + $env.AERA_INTERNAL_API_TOKEN }}" }] }, "options": {} }, "id": "check-promises", "name": "Verify due promises", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [500, 300] }
+  ],
+  "connections": { "Every day at 08:30": { "main": [[{ "node": "Verify due promises", "type": "main", "index": 0 }]] } },
+  "pinData": {}, "settings": { "executionOrder": "v1", "timezone": "Asia/Kolkata" }, "active": false, "versionId": "2b0653fa-680d-4eb4-839c-e5cc97464404"
+}
