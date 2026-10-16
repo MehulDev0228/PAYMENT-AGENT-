@@ -128,7 +128,8 @@ export interface PaymentPromise {
 export interface CommunicationMessage {
   id: string;
   companyId: string;
-  customerId: string;
+  /** Absent for inbound mail from an unknown sender, which is left for manual triage. */
+  customerId?: string;
   invoiceId?: string;
   collectionCaseId?: string;
   channel: "email";

@@ -7,14 +7,14 @@ import { CASE_VIEWS } from "@/lib/domain/case-views";
 
 export const dynamic = "force-dynamic";
 
-export default function WorkspaceLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function WorkspaceLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const { companyId } = getRequestContext();
   const counts = {
-    approvals: repository.listActions(companyId, "awaiting_approval").length,
-    review: repository.listPayments(companyId, "payment_match_review_required").length,
-    attention: repository.listCases(companyId, { statuses: CASE_VIEWS.attention.statuses }).length,
+    approvals: (await repository.listActions(companyId, "awaiting_approval")).length,
+    review: (await repository.listPayments(companyId, "payment_match_review_required")).length,
+    attention: (await repository.listCases(companyId, { statuses: CASE_VIEWS.attention.statuses })).length,
   };
-  const businessDate = formatDate(repository.today());
+  const businessDate = formatDate(await repository.today(companyId));
   return (
     <div className="min-h-dvh">
       <Sidebar counts={counts} businessDate={businessDate} />

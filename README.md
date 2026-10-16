@@ -14,7 +14,7 @@ npm run dev
 Open `http://localhost:3000` for the product site and `http://localhost:3000/dashboard` for the workspace. Copy `.env.example` to `.env.local` only when you want to change defaults (see below).
 
 ```bash
-npm run check   # typecheck + unit/integration tests
+npm run check   # typecheck + unit/integration tests (both adapters, embedded Postgres)
 npm run build   # production build
 ```
 
@@ -64,12 +64,20 @@ The invoice is settled, the promise is marked kept, the case closes and each ste
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | Use the Responses API for drafting and classification instead of the local deterministic fallback |
 | `AERA_INTERNAL_API_TOKEN` | When set, `/api/automation/*` and the execution callback require `Authorization: Bearer <token>` (used by n8n). The workspace's automation console uses server actions and is unaffected |
 | `AERA_DEV_COMPANY_ID` | Company used for unauthenticated local requests |
+| `AERA_DATA_ADAPTER`, `DATABASE_URL` | `postgres` persists everything to PostgreSQL/Supabase; `mock` (default) keeps the in-memory demo |
 
-Supabase/PostgreSQL: apply `supabase/migrations/001_initial.sql`. `lib/data/repository.ts` is the contract a production adapter must implement. n8n: see `n8n/README.md`; workflows stay inactive until credentials are supplied. Gmail is connected inside n8n, never in this app.
+## Persisting to Supabase / PostgreSQL
+
+1. Put `DATABASE_URL` (Supabase: Project Settings → Database → connection string) and `AERA_DATA_ADAPTER=postgres` in `.env.local`.
+2. Apply the schema: `npm run db:migrate` (safe to re-run; a database where `001_initial.sql` was pasted into the SQL editor is detected).
+3. Create your company and its default policy ladder: `npm run db:create-company -- "Your Company Pvt Ltd" --timezone Asia/Kolkata`, then set the printed `AERA_DEV_COMPANY_ID`. Or load the demo dataset with `npm run db:seed-demo`.
+4. `npm run dev`. Imports, approvals, payment matches, replies and automation runs are now saved, with every change in `audit_events`.
+
+Each write runs in a transaction under a per-company lock and stores only what changed; see `docs/architecture.md`. n8n: see `n8n/README.md`; workflows stay inactive until credentials are supplied. Gmail is connected inside n8n, never in this app.
 
 ## Not in V1 (next phase)
 
-- Supabase repository adapter and real authentication. The current request context is a demo identity.
+- Real authentication. The current request context is a demo identity taken from headers or `AERA_DEV_COMPANY_ID`.
 - Editable policy ladder and per-customer policy overrides.
 - Sending email directly from the app. Dispatch from the console is simulated and logged only.
 - Partial-payment allocation across several invoices from one bank entry.

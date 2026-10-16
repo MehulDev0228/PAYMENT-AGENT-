@@ -11,8 +11,8 @@ export async function POST(request: Request) {
     const context = getRequestContext(request);
     const input = Input.parse(await request.json());
     // The classifier only describes the message; the repository applies deterministic rules to decide the outcome.
-    const classification = await classifyCustomerReply(input.body, repository.today());
-    const recorded = repository.recordReply(context.companyId, input, classification);
+    const classification = await classifyCustomerReply(input.body, await repository.today(context.companyId));
+    const recorded = await repository.recordReply(context.companyId, input, classification);
     return NextResponse.json({ ...classification, ...recorded });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Reply processing failed" }, { status: 400 });

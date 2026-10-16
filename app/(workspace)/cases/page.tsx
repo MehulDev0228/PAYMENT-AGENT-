@@ -29,8 +29,10 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
     return `/cases${query.size ? `?${query}` : ""}`;
   };
 
-  const counts = Object.fromEntries((Object.keys(CASE_VIEWS) as CaseView[]).map((key) => [key, repository.listCases(companyId, { statuses: CASE_VIEWS[key].statuses, q, priority }).length]));
-  const all = repository.listCases(companyId, { statuses: CASE_VIEWS[view].statuses, q, priority });
+  const matching = await repository.listCases(companyId, { q, priority });
+  const inView = (key: CaseView) => matching.filter((item) => CASE_VIEWS[key].statuses.includes(item.status));
+  const counts = Object.fromEntries((Object.keys(CASE_VIEWS) as CaseView[]).map((key) => [key, inView(key).length]));
+  const all = inView(view);
   const pageCount = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
   const page = Math.min(pageCount, Math.max(1, Number(params.page) || 1));
   const rows = all.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);

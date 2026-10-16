@@ -8,25 +8,32 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "tsc --noEmit && vitest run"
+    "check": "tsc --noEmit && vitest run",
+    "db:migrate": "tsx --env-file-if-exists=.env.local scripts/db.ts migrate",
+    "db:create-company": "tsx --env-file-if-exists=.env.local scripts/db.ts create-company",
+    "db:seed-demo": "tsx --env-file-if-exists=.env.local scripts/db.ts seed-demo"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
     "lucide-react": "^0.468.0",
     "next": "^16.3.6",
     "openai": "^6.5.0",
+    "pg": "^8.23.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "read-excel-file": "^9.3.10",
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.3.16",
     "@types/node": "^22.18.6",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.28",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }

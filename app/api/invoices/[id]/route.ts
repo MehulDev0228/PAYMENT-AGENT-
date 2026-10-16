@@ -1,4 +1,4 @@
 import { NextResponse } from "next/server";
 import { getRequestContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
-export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) { const context = getRequestContext(request); const { id } = await params; const item = repository.getInvoice(context.companyId, id); return item ? NextResponse.json(item) : NextResponse.json({ error: "Invoice not found" }, { status: 404 }); }
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) { const context = getRequestContext(request); const { id } = await params; const item = await repository.getInvoice(context.companyId, id); return item ? NextResponse.json(item) : NextResponse.json({ error: "Invoice not found" }, { status: 404 }); }

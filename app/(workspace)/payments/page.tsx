@@ -18,8 +18,9 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
   const params = await searchParams;
   const { companyId } = getRequestContext();
   const view = VIEWS.find((item) => item.key === params.status)?.key ?? "all";
-  const all = repository.listPayments(companyId);
+  const all = await repository.listPayments(companyId);
   const review = all.filter((item) => item.matchStatus === "payment_match_review_required");
+  const candidates = new Map(await Promise.all(review.map(async (payment) => [payment.id, await repository.paymentCandidates(companyId, payment.id)] as const)));
   const rows = view === "all" ? all : all.filter((item) => item.matchStatus === view);
   const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const page = Math.min(pageCount, Math.max(1, Number(params.page) || 1));
@@ -42,7 +43,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                 </dl>
                 <p className="mt-4 rounded-xl bg-canvas p-3 text-[12.5px] leading-5 text-muted">{payment.matchNotes}</p>
               </div>
-              <PaymentReview paymentId={payment.id} candidates={repository.paymentCandidates(companyId, payment.id).map((candidate) => ({ invoiceId: candidate.invoice.id, invoiceNumber: candidate.invoice.invoiceNumber, customerName: candidate.customerName, outstanding: formatMoney(candidate.invoice.amountOutstanding, candidate.invoice.currency), dueDate: formatDate(candidate.invoice.dueDate), reason: candidate.reason }))} />
+              <PaymentReview paymentId={payment.id} candidates={(candidates.get(payment.id) ?? []).map((candidate) => ({ invoiceId: candidate.invoice.id, invoiceNumber: candidate.invoice.invoiceNumber, customerName: candidate.customerName, outstanding: formatMoney(candidate.invoice.amountOutstanding, candidate.invoice.currency), dueDate: formatDate(candidate.invoice.dueDate), reason: candidate.reason }))} />
             </article>
           ))}
         </section>

@@ -14,8 +14,8 @@ const PRINCIPLES = [
 
 const NEVER = ["Approve discounts", "Waive balances", "Change payment terms", "Approve payment plans", "Start legal escalation", "Suspend accounts", "Silently edit financial records", "Close a case on a customer's word"];
 
-export default function PolicyPage() {
-  const policy = repository.policy(getRequestContext().companyId);
+export default async function PolicyPage() {
+  const policy = await repository.policy(getRequestContext().companyId);
   return (
     <div className="space-y-6">
       <PageHeader eyebrow="Governance" title="Rules decide. AI drafts." muted="Here is exactly where the line sits." />

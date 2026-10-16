@@ -10,7 +10,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const context = getRequestContext(request); requireManager(context);
     const { id } = await params;
     const body = request.headers.get("content-type")?.includes("application/json") ? Input.parse(await request.json()) : {};
-    return NextResponse.json(repository.decideAction(context.companyId, id, "approved", context.userId, body.note));
+    return NextResponse.json(await repository.decideAction(context.companyId, id, "approved", context.userId, body.note));
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Decision failed" }, { status: 400 });
   }

@@ -15,7 +15,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
   const params = await searchParams;
   const { companyId } = getRequestContext();
   const q = params.q?.trim() || undefined;
-  const all = repository.listCustomers(companyId, q);
+  const all = await repository.listCustomers(companyId, q);
   const pageCount = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
   const page = Math.min(pageCount, Math.max(1, Number(params.page) || 1));
   const href = (next: number) => { const query = new URLSearchParams(); if (q) query.set("q", q); if (next > 1) query.set("page", String(next)); return `/customers${query.size ? `?${query}` : ""}`; };
