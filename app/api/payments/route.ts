@@ -9,5 +9,5 @@ const STATUSES = new Set<Payment["matchStatus"]>(["matched", "unmatched", "payme
 export async function GET(request: Request) {
   const context = getRequestContext(request);
   const status = new URL(request.url).searchParams.get("status") as Payment["matchStatus"] | null;
-  return NextResponse.json(repository.listPayments(context.companyId, status && STATUSES.has(status) ? status : undefined));
+  return NextResponse.json(await repository.listPayments(context.companyId, status && STATUSES.has(status) ? status : undefined));
 }

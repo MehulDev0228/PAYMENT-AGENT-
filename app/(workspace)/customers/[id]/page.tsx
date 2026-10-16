@@ -12,12 +12,12 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
-  return { title: repository.getCustomer(getRequestContext().companyId, id)?.name ?? "Customer" };
+  return { title: (await repository.getCustomer(getRequestContext().companyId, id))?.name ?? "Customer" };
 }
 
 export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const customer = repository.getCustomerDetail(getRequestContext().companyId, id);
+  const customer = await repository.getCustomerDetail(getRequestContext().companyId, id);
   if (!customer) notFound();
   const kept = customer.promises.filter((item) => item.status === "fulfilled").length;
   const broken = customer.promises.filter((item) => item.status === "missed").length;

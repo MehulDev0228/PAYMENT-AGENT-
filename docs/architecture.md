@@ -8,7 +8,7 @@
   - `reply-outcome.ts`: maps a reply classification to the permitted operational outcome.
   - `state-machine.ts`: allowed case transitions.
   - `case-views.ts`: named queue views shared by UI and API.
-- `lib/data`: tenant-scoped repository contract (`repository.ts`). V1 ships the deterministic in-memory `MockRepository`; the SQL migration is the production persistence contract.
+- `lib/data`: tenant-scoped, async repository contract (`repository.ts`). All rules live in `CollectionsEngine` (`engine.ts`), which runs synchronously on one company's in-memory working set. Two adapters host it: `mock-repository.ts` (synthetic seed, fixed business date) and `postgres-repository.ts` (PostgreSQL/Supabase), selected by `AERA_DATA_ADAPTER` in `index.ts`.
 - `lib/ai`: replaceable language adapter. It drafts communications from verified facts and classifies replies. It never computes balances or decides outcomes.
 - `lib/agent`: read-only question router for Ask AERA. Each answer names the tool that produced it.
 - `app/api`: company-scoped REST endpoints, including the automation endpoints n8n calls.
@@ -30,7 +30,14 @@ The repository computes balances, due state, matching and promise outcomes. The 
 
 ## Local and production modes
 
-Local development uses the generated fictional dataset through `MockRepository` with a fixed business date. Production uses the same repository interface backed by PostgreSQL/Supabase with RLS; the migration establishes tenant isolation using the authenticated JWT `company_id` claim.
+Local development uses the generated fictional dataset through the mock adapter with a fixed business date. Production uses the PostgreSQL adapter:
+
+- **Reads** load the company's working set (customers, invoices, payments, cases, actions, promises, messages, active policy) in one round trip and run the engine on it. A short per-process cache (1.5 s) lets one page's several queries share a load.
+- **Writes** run in one transaction: take a per-company advisory lock, reload, run the engine, then upsert only the rows that changed and insert the new audit events. Concurrent writers for a company are serialised, and a failed step leaves no partial state.
+- **Audit history** is append-only and never loaded into memory; it is queried directly.
+- **Business date** is today in the company's timezone (`companies.timezone`).
+- **Tenancy**: the app connects with a server-side role, so every statement is scoped to `company_id` in the adapter. RLS (JWT `company_id` claim) still guards any direct client access.
+- **Scale**: loading the working set per call suits a business with up to tens of thousands of open records. Beyond that, move hot reads (lists, search) to targeted SQL behind the same contract.
 
 ## Design system
 

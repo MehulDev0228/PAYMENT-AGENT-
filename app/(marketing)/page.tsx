@@ -23,10 +23,10 @@ const FAQ = [
   ["Can we see why something happened?", "Every action carries the reason and the data snapshot it was based on, in an append-only audit log your auditors can read."],
 ];
 
-export default function LandingPage() {
-  const overview = repository.overview(DEMO_COMPANY_ID);
-  const approvals = repository.listActions(DEMO_COMPANY_ID, "awaiting_approval").length;
-  const showcase = repository.listCases(DEMO_COMPANY_ID, { q: "INV-1042" }).find((item) => item.invoice.invoiceNumber === "INV-1042");
+export default async function LandingPage() {
+  const overview = await repository.overview(DEMO_COMPANY_ID);
+  const approvals = (await repository.listActions(DEMO_COMPANY_ID, "awaiting_approval")).length;
+  const showcase = (await repository.listCases(DEMO_COMPANY_ID, { q: "INV-1042" })).find((item) => item.invoice.invoiceNumber === "INV-1042");
   const maxAging = Math.max(1, ...overview.aging.map((item) => item.amount));
 
   return (

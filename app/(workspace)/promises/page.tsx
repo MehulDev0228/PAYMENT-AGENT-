@@ -16,9 +16,9 @@ export default async function PromisesPage({ searchParams }: { searchParams: Pro
   const { status } = await searchParams;
   const { companyId } = getRequestContext();
   const view = VIEWS.find((item) => item.key === status)?.key ?? "active";
-  const all = repository.listPromiseItems(companyId);
+  const all = await repository.listPromiseItems(companyId);
   const items = all.filter((item) => item.status === view);
-  const today = repository.today();
+  const today = await repository.today(companyId);
   const total = items.reduce((sum, item) => sum + (item.promisedAmount ?? item.amountOutstanding), 0);
 
   return (

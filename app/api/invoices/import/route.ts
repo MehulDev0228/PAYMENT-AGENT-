@@ -17,6 +17,6 @@ export async function POST(request: Request) {
     if (!(file instanceof File)) return NextResponse.json({ error: "Attach a CSV or XLSX file using the field name 'file'." }, { status: 400 });
     const raw = await parseWorkbook(file);
     const rows = raw.map((item) => { const normalized = normalizeHeaders(item); return InvoiceRow.parse({ ...normalized, amount: asNumber(normalized.amount), currency: String(normalized.currency).toUpperCase() }); });
-    return NextResponse.json(repository.importInvoices(context.companyId, rows));
+    return NextResponse.json(await repository.importInvoices(context.companyId, rows, context.userId));
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Import failed" }, { status: 400 }); }
 }

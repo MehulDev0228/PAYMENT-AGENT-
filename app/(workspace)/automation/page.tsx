@@ -17,9 +17,9 @@ const WORKFLOWS = [
   ["05-daily-management-summary.json", "GET /api/automation/summary"],
 ];
 
-export default function AutomationPage() {
+export default async function AutomationPage() {
   const { companyId } = getRequestContext();
-  const replyCases = repository.listCases(companyId, { statuses: ["reminder_sent", "overdue", "reminder_pending", "customer_replied"] }).slice(0, 25)
+  const replyCases = (await repository.listCases(companyId, { statuses: ["reminder_sent", "overdue", "reminder_pending", "customer_replied"] })).slice(0, 25)
     .map((item) => ({ id: item.id, label: `${item.invoice.invoiceNumber} · ${item.customer.name} · ${formatMoney(item.invoice.amountOutstanding)}` }));
   const llm = Boolean(process.env.OPENAI_API_KEY && process.env.OPENAI_MODEL);
 
@@ -30,7 +30,7 @@ export default function AutomationPage() {
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <article className="panel overflow-hidden">
           <SectionTitle title="Automation log" helper="Latest audit events from jobs and AERA" />
-          <ActivityFeed events={repository.listAudit(companyId, { limit: 10 })} empty="No jobs have run yet" />
+          <ActivityFeed events={await repository.listAudit(companyId, { limit: 10 })} empty="No jobs have run yet" />
         </article>
         <article className="panel overflow-hidden">
           <SectionTitle title="Integrations" helper="What is connected in this environment" />

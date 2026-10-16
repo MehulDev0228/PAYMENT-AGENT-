@@ -14,8 +14,8 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
   const { view } = await searchParams;
   const { companyId } = getRequestContext();
   const decided = view === "decided";
-  const waiting = repository.listApprovals(companyId);
-  const history = repository.listApprovals(companyId, "decided");
+  const waiting = await repository.listApprovals(companyId);
+  const history = await repository.listApprovals(companyId, "decided");
   const items = decided ? history : waiting;
   const atStake = waiting.reduce((total, item) => total + item.amountOutstanding, 0);
 

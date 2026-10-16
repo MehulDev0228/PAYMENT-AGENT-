@@ -12,15 +12,15 @@ import { formatMoney } from "@/lib/domain/money";
 export const metadata: Metadata = { title: "Overview" };
 export const dynamic = "force-dynamic";
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
   const { companyId } = getRequestContext();
-  const today = repository.today();
-  const overview = repository.overview(companyId);
-  const priorityCases = repository.listCases(companyId, { statuses: OPEN_CASE_STATUSES }).slice(0, 8);
-  const approvals = repository.listApprovals(companyId);
+  const today = await repository.today(companyId);
+  const overview = await repository.overview(companyId);
+  const priorityCases = (await repository.listCases(companyId, { statuses: OPEN_CASE_STATUSES })).slice(0, 8);
+  const approvals = await repository.listApprovals(companyId);
   const horizon = new Date(`${today}T00:00:00Z`); horizon.setUTCDate(horizon.getUTCDate() + 3);
-  const promisesDue = repository.listPromiseItems(companyId, "active").filter((item) => item.promisedDate <= horizon.toISOString().slice(0, 10));
-  const review = repository.listPayments(companyId, "payment_match_review_required");
+  const promisesDue = (await repository.listPromiseItems(companyId, "active")).filter((item) => item.promisedDate <= horizon.toISOString().slice(0, 10));
+  const review = await repository.listPayments(companyId, "payment_match_review_required");
   const maxAging = Math.max(1, ...overview.aging.map((item) => item.amount));
   const overdueShare = overview.totalOutstanding ? Math.round((overview.totalOverdue / overview.totalOutstanding) * 100) : 0;
 
@@ -89,7 +89,7 @@ export default function DashboardPage() {
           </article>
           <article className="panel overflow-hidden">
             <SectionTitle title="Recent activity" helper="From the audit log" />
-            <ActivityFeed events={repository.listAudit(companyId, { limit: 6 })} empty="Nothing has happened yet today" />
+            <ActivityFeed events={await repository.listAudit(companyId, { limit: 6 })} empty="Nothing has happened yet today" />
           </article>
         </div>
       </section>
