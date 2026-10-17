@@ -4,7 +4,7 @@ import { ArrowUpRight, Banknote, CalendarClock, FileWarning, WalletCards } from 
 import { ActivityFeed } from "@/components/activity-feed";
 import { CasesTable } from "@/components/cases-table";
 import { PageHeader, SectionTitle, StatTile, TextLink, formatDate } from "@/components/ui";
-import { getRequestContext } from "@/lib/auth";
+import { getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
 import { OPEN_CASE_STATUSES } from "@/lib/domain/case-views";
 import { formatMoney } from "@/lib/domain/money";
@@ -13,7 +13,7 @@ export const metadata: Metadata = { title: "Overview" };
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const { companyId } = getRequestContext();
+  const { companyId } = await getPageContext();
   const today = await repository.today(companyId);
   const overview = await repository.overview(companyId);
   const priorityCases = (await repository.listCases(companyId, { statuses: OPEN_CASE_STATUSES })).slice(0, 8);

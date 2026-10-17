@@ -3,7 +3,7 @@ import Link from "next/link";
 import { FileUp, HandCoins } from "lucide-react";
 import { PaymentReview } from "@/components/payment-review";
 import { EmptyState, PageHeader, Pagination, StatusBadge, Tabs, formatDate } from "@/components/ui";
-import { getRequestContext } from "@/lib/auth";
+import { canManage, getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
 import { formatMoney } from "@/lib/domain/money";
 import type { Payment } from "@/lib/domain/types";
@@ -16,7 +16,8 @@ const VIEWS: Array<{ key: "all" | Payment["matchStatus"]; label: string }> = [{ 
 
 export default async function PaymentsPage({ searchParams }: { searchParams: Promise<{ status?: string; page?: string }> }) {
   const params = await searchParams;
-  const { companyId } = getRequestContext();
+  const context = await getPageContext();
+  const { companyId } = context;
   const view = VIEWS.find((item) => item.key === params.status)?.key ?? "all";
   const all = await repository.listPayments(companyId);
   const review = all.filter((item) => item.matchStatus === "payment_match_review_required");
@@ -43,7 +44,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                 </dl>
                 <p className="mt-4 rounded-xl bg-canvas p-3 text-[12.5px] leading-5 text-muted">{payment.matchNotes}</p>
               </div>
-              <PaymentReview paymentId={payment.id} candidates={(candidates.get(payment.id) ?? []).map((candidate) => ({ invoiceId: candidate.invoice.id, invoiceNumber: candidate.invoice.invoiceNumber, customerName: candidate.customerName, outstanding: formatMoney(candidate.invoice.amountOutstanding, candidate.invoice.currency), dueDate: formatDate(candidate.invoice.dueDate), reason: candidate.reason }))} />
+              <PaymentReview paymentId={payment.id} readOnly={!canManage(context)} candidates={(candidates.get(payment.id) ?? []).map((candidate) => ({ invoiceId: candidate.invoice.id, invoiceNumber: candidate.invoice.invoiceNumber, customerName: candidate.customerName, outstanding: formatMoney(candidate.invoice.amountOutstanding, candidate.invoice.currency), dueDate: formatDate(candidate.invoice.dueDate), reason: candidate.reason }))} />
             </article>
           ))}
         </section>

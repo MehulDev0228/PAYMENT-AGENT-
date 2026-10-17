@@ -13,7 +13,7 @@ export function SiteNav() {
           {LINKS.map(([href, label]) => <li key={href}><a href={href} className="rounded-lg px-3 py-2 text-[13.5px] font-medium text-white/80 transition-colors hover:bg-white/[0.07] hover:text-white">{label}</a></li>)}
         </ul>
         <div className="flex items-center gap-1.5">
-          <Link href="/dashboard" className="hidden rounded-lg px-3 py-2 text-[13.5px] font-medium text-white/80 transition-colors hover:text-white sm:block">Sign in</Link>
+          <Link href="/login" className="hidden rounded-lg px-3 py-2 text-[13.5px] font-medium text-white/80 transition-colors hover:text-white sm:block">Sign in</Link>
           <Link href="/dashboard" className="btn-light min-h-10">Open the demo</Link>
           <details className="group relative md:hidden">
             <summary className="grid size-10 list-none place-items-center rounded-lg text-white/80 hover:bg-white/10 [&::-webkit-details-marker]:hidden" aria-label="Menu"><Menu size={19} /></summary>

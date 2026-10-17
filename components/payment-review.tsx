@@ -2,11 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { cx } from "./ui";
+import { ReadOnlyNote, cx } from "./ui";
 
 export interface ReviewCandidate { invoiceId: string; invoiceNumber: string; customerName: string; outstanding: string; dueDate: string; reason: string }
 
-export function PaymentReview({ paymentId, candidates }: { paymentId: string; candidates: ReviewCandidate[] }) {
+export function PaymentReview({ paymentId, candidates, readOnly = false }: { paymentId: string; candidates: ReviewCandidate[]; readOnly?: boolean }) {
   const [selected, setSelected] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -29,7 +29,7 @@ export function PaymentReview({ paymentId, candidates }: { paymentId: string; ca
 
   if (candidates.length === 0) return <p className="text-[13px] text-muted">No open invoice is a plausible match. Leave unapplied and contact the payer.</p>;
   return (
-    <fieldset>
+    <fieldset disabled={readOnly}>
       <legend className="eyebrow mb-3">Candidate invoices</legend>
       <div className="space-y-2">
         {candidates.map((candidate) => (
@@ -44,8 +44,10 @@ export function PaymentReview({ paymentId, candidates }: { paymentId: string; ca
         ))}
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <button type="button" disabled={!selected || busy} onClick={apply} className="btn-primary">{busy ? "Applying…" : "Apply match"}</button>
-        <p className="text-[12.5px] text-muted">Applying updates the invoice balance, closes settled cases and is recorded in the audit log.</p>
+        {readOnly ? <ReadOnlyNote>Read-only access. A manager applies payment matches.</ReadOnlyNote> : <>
+          <button type="button" disabled={!selected || busy} onClick={apply} className="btn-primary">{busy ? "Applying…" : "Apply match"}</button>
+          <p className="text-[12.5px] text-muted">Applying updates the invoice balance, closes settled cases and is recorded in the audit log.</p>
+        </>}
       </div>
       {error && <p role="alert" className="mt-3 text-[13px] text-danger">{error}</p>}
     </fieldset>

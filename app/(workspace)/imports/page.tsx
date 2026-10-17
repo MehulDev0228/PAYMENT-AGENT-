@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { ImportPanel } from "@/components/import-panel";
 import { PageHeader } from "@/components/ui";
+import { canManage, getPageContext } from "@/lib/auth";
 
 export const metadata: Metadata = { title: "Imports" };
+export const dynamic = "force-dynamic";
 
 const SAFEGUARDS = [
   ["Tenant scoped", "Every row is written only to the authenticated company."],
@@ -10,13 +12,14 @@ const SAFEGUARDS = [
   ["Never guessed", "A payment that could fit more than one invoice waits for a person."],
 ];
 
-export default function ImportsPage() {
+export default async function ImportsPage() {
+  const readOnly = !canManage(await getPageContext());
   return (
     <div className="space-y-6">
       <PageHeader eyebrow="Data operations" title="Bring your ledger in." muted="Validated row by row before anything changes." />
       <div className="grid gap-4 xl:grid-cols-2">
-        <ImportPanel kind="invoices" n="01" />
-        <ImportPanel kind="payments" n="02" />
+        <ImportPanel kind="invoices" n="01" readOnly={readOnly} />
+        <ImportPanel kind="payments" n="02" readOnly={readOnly} />
       </div>
       <section className="grid overflow-hidden rounded-2xl bg-ink text-white md:grid-cols-3">
         {SAFEGUARDS.map(([title, body], index) => (

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowUpRight, Building2, Search } from "lucide-react";
 import { EmptyState, PageHeader, Pagination } from "@/components/ui";
-import { getRequestContext } from "@/lib/auth";
+import { getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
 import { formatMoney } from "@/lib/domain/money";
 
@@ -13,7 +13,7 @@ const PAGE_SIZE = 25;
 
 export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string }> }) {
   const params = await searchParams;
-  const { companyId } = getRequestContext();
+  const { companyId } = await getPageContext();
   const q = params.q?.trim() || undefined;
   const all = await repository.listCustomers(companyId, q);
   const pageCount = Math.max(1, Math.ceil(all.length / PAGE_SIZE));

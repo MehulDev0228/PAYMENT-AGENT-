@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowUpRight, Inbox } from "lucide-react";
 import { EmptyState, PageHeader, StatusBadge, Tabs, formatDate } from "@/components/ui";
-import { getRequestContext } from "@/lib/auth";
+import { getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
 import { daysBetween, formatMoney } from "@/lib/domain/money";
 import type { PromiseStatus } from "@/lib/domain/types";
@@ -14,7 +14,7 @@ const VIEWS: Array<{ key: PromiseStatus; label: string }> = [{ key: "active", la
 
 export default async function PromisesPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   const { status } = await searchParams;
-  const { companyId } = getRequestContext();
+  const { companyId } = await getPageContext();
   const view = VIEWS.find((item) => item.key === status)?.key ?? "active";
   const all = await repository.listPromiseItems(companyId);
   const items = all.filter((item) => item.status === view);

@@ -3,8 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, X } from "lucide-react";
+import { ReadOnlyNote } from "./ui";
 
-export function ApprovalButtons({ actionId, size = "md" }: { actionId: string; size?: "sm" | "md" }) {
+export function ApprovalButtons({ actionId, size = "md", readOnly = false }: { actionId: string; size?: "sm" | "md"; readOnly?: boolean }) {
   const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
   const [error, setError] = useState("");
   const [, startTransition] = useTransition();
@@ -23,6 +24,7 @@ export function ApprovalButtons({ actionId, size = "md" }: { actionId: string; s
     }
   }
 
+  if (readOnly) return <ReadOnlyNote />;
   const sizing = size === "sm" ? "btn-sm" : "";
   return (
     <div>

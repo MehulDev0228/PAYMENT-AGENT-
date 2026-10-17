@@ -3,8 +3,9 @@ import Link from "next/link";
 import { ArrowUpRight, ShieldCheck } from "lucide-react";
 import { ApprovalButtons } from "@/components/approval-buttons";
 import { EmptyState, PageHeader, StatusBadge, Tabs, formatDate } from "@/components/ui";
-import { getRequestContext } from "@/lib/auth";
-import { repository } from "@/lib/data";
+import { canManage, getPageContext } from "@/lib/auth";
+import { repository, sqlDatabase } from "@/lib/data";
+import { userNames } from "@/lib/data/users";
 import { formatMoney } from "@/lib/domain/money";
 
 export const metadata: Metadata = { title: "Approvals" };
@@ -12,11 +13,14 @@ export const dynamic = "force-dynamic";
 
 export default async function ApprovalsPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const { view } = await searchParams;
-  const { companyId } = getRequestContext();
+  const context = await getPageContext();
+  const { companyId } = context;
   const decided = view === "decided";
   const waiting = await repository.listApprovals(companyId);
   const history = await repository.listApprovals(companyId, "decided");
   const items = decided ? history : waiting;
+  const db = sqlDatabase();
+  const names = db ? await userNames(db, companyId) : new Map<string, string>();
   const atStake = waiting.reduce((total, item) => total + item.amountOutstanding, 0);
 
   return (
@@ -45,7 +49,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
                   <p className="mt-0.5 text-[12px] text-muted">outstanding · raised {formatDate(item.createdAt)}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {item.status === "awaiting_approval" ? <ApprovalButtons actionId={item.id} size="sm" /> : <span className="text-[12.5px] text-muted">by {item.approvedBy}</span>}
+                  {item.status === "awaiting_approval" ? <ApprovalButtons actionId={item.id} size="sm" readOnly={!canManage(context)} /> : <span className="text-[12.5px] text-muted">by {(item.approvedBy && names.get(item.approvedBy)) || item.approvedBy}</span>}
                   <Link href={`/cases/${item.collectionCaseId}`} aria-label={`Open case for ${item.invoiceNumber}`} className="grid size-8 place-items-center rounded-lg text-muted hover:bg-canvas hover:text-ink"><ArrowUpRight size={16} /></Link>
                 </div>
               </li>

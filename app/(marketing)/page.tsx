@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Ban, Bot, Check, CheckCircle2, Mail, MessageSquareReply, Plus, X } from "lucide-react";
 import { SiteNav } from "@/components/marketing/site-nav";
 import { LogoMark, cx, formatDate } from "@/components/ui";
-import { repository } from "@/lib/data";
+import { demoRepository } from "@/lib/data";
 import { DEMO_COMPANY_ID } from "@/lib/data/seed";
 import { formatMoney } from "@/lib/domain/money";
 
@@ -24,6 +24,7 @@ const FAQ = [
 ];
 
 export default async function LandingPage() {
+  const repository = demoRepository();
   const overview = await repository.overview(DEMO_COMPANY_ID);
   const approvals = (await repository.listActions(DEMO_COMPANY_ID, "awaiting_approval")).length;
   const showcase = (await repository.listCases(DEMO_COMPANY_ID, { q: "INV-1042" })).find((item) => item.invoice.invoiceNumber === "INV-1042");

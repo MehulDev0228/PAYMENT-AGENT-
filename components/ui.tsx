@@ -100,6 +100,11 @@ export function TextLink({ href, children }: { href: string; children: ReactNode
   return <Link href={href} className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-[13px] font-medium text-ink transition-colors hover:bg-black/[0.04]">{children}</Link>;
 }
 
+/** Shown to viewers in place of controls that change data. */
+export function ReadOnlyNote({ children = "Read-only access. A manager makes this decision." }: { children?: ReactNode }) {
+  return <p className="text-[12.5px] text-muted">{children}</p>;
+}
+
 export function EmptyState({ icon: Icon, title, body }: { icon: LucideIcon; title: string; body?: string }) {
   return (
     <div className="flex flex-col items-center justify-center px-6 py-14 text-center">

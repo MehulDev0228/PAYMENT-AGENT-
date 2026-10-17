@@ -3,13 +3,18 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, Sparkles, X } from "lucide-react";
+import { LogOut, Menu, Sparkles, X } from "lucide-react";
+import { signOut } from "@/app/login/actions";
 import { Logo } from "@/components/ui";
 import { CommandPalette } from "./command-palette";
 import { GuardrailNote, NavList } from "./sidebar";
 import type { NavCounts } from "./nav";
 
-export function Topbar({ counts, businessDate }: { counts: NavCounts; businessDate: string }) {
+export interface Viewer { name: string; role: string; devMode: boolean }
+
+const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]!.toUpperCase()).join("");
+
+export function Topbar({ counts, businessDate, viewer }: { counts: NavCounts; businessDate: string; viewer: Viewer }) {
   const [drawer, setDrawer] = useState(false);
   const pathname = usePathname();
   useEffect(() => { setDrawer(false); }, [pathname]);
@@ -30,11 +35,13 @@ export function Topbar({ counts, businessDate }: { counts: NavCounts; businessDa
           <div className="hidden flex-1 md:block"><CommandPalette /></div>
           <div className="ml-auto flex items-center gap-2">
             <Link href="/ask" className="btn-outline hidden sm:inline-flex"><Sparkles size={15} className="text-brand" aria-hidden="true" /> Ask AERA</Link>
+            {viewer.devMode && <span className="whitespace-nowrap rounded-md bg-[#fdf7e6] px-2 py-1 font-mono text-[10.5px] uppercase tracking-[0.12em] text-warning" title="AERA_AUTH_MODE=dev: authentication is off. Never expose this to a network.">Dev mode · no sign-in</span>}
             <div className="ml-1 hidden text-right leading-tight sm:block">
-              <p className="text-[13px] font-medium">Mehul Patel</p>
-              <p className="text-[11.5px] text-muted">Finance manager</p>
+              <p className="text-[13px] font-medium">{viewer.name}</p>
+              <p className="text-[11.5px] text-muted">{viewer.role}</p>
             </div>
-            <span className="grid size-9 place-items-center rounded-full bg-ink text-[12px] font-medium text-white" aria-hidden="true">MP</span>
+            <span className="grid size-9 place-items-center rounded-full bg-ink text-[12px] font-medium text-white" aria-hidden="true">{initials(viewer.name)}</span>
+            {!viewer.devMode && <form action={signOut}><button type="submit" className="btn-ghost px-2" aria-label="Sign out" title="Sign out"><LogOut size={17} /></button></form>}
           </div>
         </div>
       </header>

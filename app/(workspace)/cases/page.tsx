@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Search } from "lucide-react";
 import { CasesTable } from "@/components/cases-table";
 import { PageHeader, Pagination, Tabs } from "@/components/ui";
-import { getRequestContext } from "@/lib/auth";
+import { getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
 import { CASE_VIEWS, isCaseView, type CaseView } from "@/lib/domain/case-views";
 import type { CollectionCase } from "@/lib/domain/types";
@@ -17,7 +17,7 @@ type Search = { view?: string; q?: string; priority?: string; page?: string };
 
 export default async function CasesPage({ searchParams }: { searchParams: Promise<Search> }) {
   const params = await searchParams;
-  const { companyId } = getRequestContext();
+  const { companyId } = await getPageContext();
   const view: CaseView = isCaseView(params.view) ? params.view : "open";
   const q = params.q?.trim() || undefined;
   const priority = PRIORITIES.find((item) => item === params.priority);

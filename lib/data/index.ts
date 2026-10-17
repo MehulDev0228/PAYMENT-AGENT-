@@ -21,3 +21,16 @@ function selectRepository(): AeraRepository {
 }
 
 export const repository: AeraRepository = selectRepository();
+
+/** The PostgreSQL connection behind the postgres adapter (undefined on the mock adapter). */
+export function sqlDatabase(): SqlDatabase | undefined {
+  return globalThis.__aeraDatabase;
+}
+
+let demo: AeraRepository | undefined;
+
+/** Fictional demo data for public pages, so they never read a tenant's database. */
+export function demoRepository(): AeraRepository {
+  if ((process.env.AERA_DATA_ADAPTER || "mock") === "mock") return repository;
+  return (demo ??= sharedMockRepository());
+}

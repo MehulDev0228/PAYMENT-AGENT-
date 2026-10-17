@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { CalendarCheck, CheckCircle2, CircleAlert, MailCheck, Play, Radar, Reply } from "lucide-react";
 import type { JobResult } from "@/app/(workspace)/automation/actions";
 import { checkPromises, dispatchRemindersLocally, runDailyMonitor, simulateReply } from "@/app/(workspace)/automation/actions";
-import { cx } from "./ui";
+import { ReadOnlyNote, cx } from "./ui";
 
 const JOBS = [
   { key: "monitor", n: "01", title: "Daily collection monitor", body: "Evaluates every overdue invoice against the policy ladder and queues reminders or approvals. Idempotent per policy step.", schedule: "n8n · daily 09:00", icon: Radar, run: runDailyMonitor },
@@ -24,7 +24,7 @@ function ResultPanel({ result }: { result?: JobResult }) {
   );
 }
 
-export function AutomationConsole({ replyCases }: { replyCases: Array<{ id: string; label: string }> }) {
+export function AutomationConsole({ replyCases, readOnly = false }: { replyCases: Array<{ id: string; label: string }>; readOnly?: boolean }) {
   const [results, setResults] = useState<Record<string, JobResult>>({});
   const [running, setRunning] = useState<string>();
   const [pending, startTransition] = useTransition();
@@ -41,6 +41,7 @@ export function AutomationConsole({ replyCases }: { replyCases: Array<{ id: stri
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
+      {readOnly && <div className="panel px-5 py-4 xl:col-span-2"><ReadOnlyNote>Read-only access. A manager runs these jobs.</ReadOnlyNote></div>}
       {JOBS.map((job) => (
         <article key={job.key} className="panel flex flex-col p-5 md:p-6">
           <div className="flex items-start justify-between gap-4">
@@ -51,7 +52,7 @@ export function AutomationConsole({ replyCases }: { replyCases: Array<{ id: stri
           <p className="mt-1.5 flex-1 text-[13.5px] leading-6 text-muted">{job.body}</p>
           <div className="mt-5 flex items-center justify-between gap-3 border-t border-line pt-4">
             <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted">{job.schedule}</span>
-            <button type="button" disabled={pending} onClick={() => run(job.key, job.run)} className="btn-primary btn-sm"><Play size={13} aria-hidden="true" />{running === job.key ? "Running…" : "Run now"}</button>
+            <button type="button" disabled={readOnly || pending} onClick={() => run(job.key, job.run)} className="btn-primary btn-sm"><Play size={13} aria-hidden="true" />{running === job.key ? "Running…" : "Run now"}</button>
           </div>
           <ResultPanel result={results[job.key]} />
         </article>
@@ -74,7 +75,7 @@ export function AutomationConsole({ replyCases }: { replyCases: Array<{ id: stri
             <textarea name="body" value={body} onChange={(event) => setBody(event.target.value)} rows={3} className="input mt-1.5 py-2.5 leading-6" required maxLength={2000} />
           </label>
           <div className="flex flex-wrap gap-1.5">{SAMPLE_REPLIES.map((sample) => <button key={sample} type="button" onClick={() => setBody(sample)} className={cx("rounded-full border px-3 py-1 text-[12px] transition-colors", body === sample ? "border-ink bg-ink text-white" : "border-line text-muted hover:border-line-strong hover:text-ink")}>{sample}</button>)}</div>
-          <div className="flex justify-end border-t border-line pt-4"><button type="submit" disabled={pending} className="btn-primary btn-sm"><Play size={13} aria-hidden="true" />{running === "reply" ? "Processing…" : "Process reply"}</button></div>
+          <div className="flex justify-end border-t border-line pt-4"><button type="submit" disabled={readOnly || pending} className="btn-primary btn-sm"><Play size={13} aria-hidden="true" />{running === "reply" ? "Processing…" : "Process reply"}</button></div>
         </form>
         <ResultPanel result={results.reply} />
       </article>

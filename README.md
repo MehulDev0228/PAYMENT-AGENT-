@@ -13,6 +13,8 @@ npm run dev
 
 Open `http://localhost:3000` for the product site and `http://localhost:3000/dashboard` for the workspace. Copy `.env.example` to `.env.local` only when you want to change defaults (see below).
 
+With no configuration the app runs in **dev mode: authentication is off** and every request acts as the demo finance manager (the topbar shows "Dev mode · no sign-in"). This is for a developer machine only. Real data needs Supabase Auth, see [Sign-in with Supabase Auth](#sign-in-with-supabase-auth).
+
 ```bash
 npm run check   # typecheck + unit/integration tests (both adapters, embedded Postgres)
 npm run build   # production build
@@ -36,6 +38,7 @@ npm run build   # production build
 | `/automation` | Run the daily monitor, simulated reminder dispatch, promise check and reply processing by hand |
 | `/ask` | Read-only questions answered by named repository tools, with tabular evidence |
 | `/policy` | Policy ladder and hard limits |
+| `/login` | Email and password sign-in (Supabase Auth) |
 
 Press `Ctrl K` / `⌘ K` anywhere in the workspace to search invoices, customers and pages.
 
@@ -62,22 +65,44 @@ The invoice is settled, the promise is marked kept, the case closes and each ste
 | Variable | Effect |
 | --- | --- |
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | Use the Responses API for drafting and classification instead of the local deterministic fallback |
-| `AERA_INTERNAL_API_TOKEN` | When set, `/api/automation/*` and the execution callback require `Authorization: Bearer <token>` (used by n8n). The workspace's automation console uses server actions and is unaffected |
-| `AERA_DEV_COMPANY_ID` | Company used for unauthenticated local requests |
+| `AERA_AUTH_MODE` | `supabase` requires sign-in; `dev` turns authentication off. Defaults to `supabase` when `NEXT_PUBLIC_SUPABASE_URL` is set, else `dev`. Dev mode is refused with a database adapter in production |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase project used for sign-in |
+| `SUPABASE_SERVICE_ROLE_KEY` | Only read by `npm run db:add-user` to create sign-ins. Never needed by the running app |
+| `AERA_INTERNAL_API_TOKEN`, `AERA_AUTOMATION_COMPANY_ID` | n8n service token and the one company it acts for. Accepted only on `/api/automation/*`, `GET /api/collections/actions` and the execution callback. Without a token those routes need a signed-in manager |
+| `AERA_DEV_COMPANY_ID`, `AERA_DEV_ROLE` | Dev mode only: the company and role every request acts as (set `AERA_DEV_ROLE=viewer` to try read-only access) |
 | `AERA_DATA_ADAPTER`, `DATABASE_URL` | `postgres` persists everything to PostgreSQL/Supabase; `mock` (default) keeps the in-memory demo |
 
 ## Persisting to Supabase / PostgreSQL
 
 1. Put `DATABASE_URL` (Supabase: Project Settings → Database → connection string) and `AERA_DATA_ADAPTER=postgres` in `.env.local`.
 2. Apply the schema: `npm run db:migrate` (safe to re-run; a database where `001_initial.sql` was pasted into the SQL editor is detected).
-3. Create your company and its default policy ladder: `npm run db:create-company -- "Your Company Pvt Ltd" --timezone Asia/Kolkata`, then set the printed `AERA_DEV_COMPANY_ID`. Or load the demo dataset with `npm run db:seed-demo`.
-4. `npm run dev`. Imports, approvals, payment matches, replies and automation runs are now saved, with every change in `audit_events`.
+3. Create your company and its default policy ladder: `npm run db:create-company -- "Your Company Pvt Ltd" --timezone Asia/Kolkata`. Or load the demo dataset with `npm run db:seed-demo`.
+4. Set up sign-in (next section). For a quick local look without it, set `AERA_AUTH_MODE=dev` and `AERA_DEV_COMPANY_ID` to the printed id; this only works outside production.
+5. `npm run dev`. Imports, approvals, payment matches, replies and automation runs are now saved, with every change in `audit_events`.
 
 Each write runs in a transaction under a per-company lock and stores only what changed; see `docs/architecture.md`. n8n: see `n8n/README.md`; workflows stay inactive until credentials are supplied. Gmail is connected inside n8n, never in this app.
 
+## Sign-in with Supabase Auth
+
+Identity comes only from the Supabase session: the app verifies the session JWT, then reads the caller's company and role from their `public.users` row (`public.users.id` = `auth.users.id`). The `x-company-id`, `x-user-id` and `x-user-role` headers are ignored.
+
+1. Complete [Persisting to Supabase / PostgreSQL](#persisting-to-supabase--postgresql) steps 1 to 3 (`AERA_DATA_ADAPTER=postgres` is required: workspace users live in the database).
+2. In `.env.local` set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Supabase: Project Settings → API). Auth mode switches to `supabase` automatically.
+3. In the Supabase dashboard, Authentication → Sign In / Providers: keep Email enabled and turn **off** "Allow new users to sign up". Self-registered accounts would get no access anyway (no `public.users` row means 403), but there is no reason to allow them.
+4. Add people: `npm run db:add-user -- asha@yourco.com --company <company id> --role finance_manager --name "Asha Rao"`. If the email has no sign-in yet, the script creates one (needs `SUPABASE_SERVICE_ROLE_KEY`) and prints an initial password once; otherwise it links the existing sign-in. Re-run it to change someone's role.
+5. `npm run dev`, open `/dashboard` and sign in.
+
+| Role | Access |
+| --- | --- |
+| `admin`, `finance_manager`, `collection_manager` | Everything in their company, including approve/reject, imports, payment matches and automation jobs |
+| `viewer` | Read-only: pages and read APIs work, every mutation answers 403 and its controls are hidden or disabled |
+
+Signed-out page requests redirect to `/login`, signed-out API calls get 401, and a signed-in account without a `public.users` row is told it has no access. For n8n, set `AERA_INTERNAL_API_TOKEN` and `AERA_AUTOMATION_COMPANY_ID` (see `n8n/README.md`).
+
 ## Not in V1 (next phase)
 
-- Real authentication. The current request context is a demo identity taken from headers or `AERA_DEV_COMPANY_ID`.
+- Self-service account management: password reset, email invitations, and an in-app screen to add users and change roles (today: `npm run db:add-user`). No SSO or MFA enforcement beyond what the Supabase project is configured for.
+- One automation token per deployment. Running n8n for several companies needs a token per company.
 - Editable policy ladder and per-customer policy overrides.
 - Sending email directly from the app. Dispatch from the console is simulated and logged only.
 - Partial-payment allocation across several invoices from one bank entry.

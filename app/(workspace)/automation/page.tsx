@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ActivityFeed } from "@/components/activity-feed";
 import { AutomationConsole } from "@/components/automation-console";
 import { PageHeader, SectionTitle } from "@/components/ui";
-import { getRequestContext } from "@/lib/auth";
+import { canManage, getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
 import { formatMoney } from "@/lib/domain/money";
 
@@ -18,7 +18,8 @@ const WORKFLOWS = [
 ];
 
 export default async function AutomationPage() {
-  const { companyId } = getRequestContext();
+  const context = await getPageContext();
+  const { companyId } = context;
   const replyCases = (await repository.listCases(companyId, { statuses: ["reminder_sent", "overdue", "reminder_pending", "customer_replied"] })).slice(0, 25)
     .map((item) => ({ id: item.id, label: `${item.invoice.invoiceNumber} · ${item.customer.name} · ${formatMoney(item.invoice.amountOutstanding)}` }));
   const llm = Boolean(process.env.OPENAI_API_KEY && process.env.OPENAI_MODEL);
@@ -26,7 +27,7 @@ export default async function AutomationPage() {
   return (
     <div className="space-y-6">
       <PageHeader eyebrow="Operations" title="The jobs behind the scenes." muted="Run them by hand, watch what they record." />
-      <AutomationConsole replyCases={replyCases} />
+      <AutomationConsole replyCases={replyCases} readOnly={!canManage(context)} />
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <article className="panel overflow-hidden">
           <SectionTitle title="Automation log" helper="Latest audit events from jobs and AERA" />

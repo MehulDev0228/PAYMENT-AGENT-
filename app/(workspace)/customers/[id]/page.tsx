@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Mail, MapPin, Phone, UserRound } from "lucide-react";
 import { CasesTable } from "@/components/cases-table";
 import { SectionTitle, StatTile, StatusBadge, formatDate } from "@/components/ui";
-import { getRequestContext } from "@/lib/auth";
+import { getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
 import { formatMoney } from "@/lib/domain/money";
 
@@ -12,12 +12,12 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
-  return { title: (await repository.getCustomer(getRequestContext().companyId, id))?.name ?? "Customer" };
+  return { title: (await repository.getCustomer((await getPageContext()).companyId, id))?.name ?? "Customer" };
 }
 
 export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const customer = await repository.getCustomerDetail(getRequestContext().companyId, id);
+  const customer = await repository.getCustomerDetail((await getPageContext()).companyId, id);
   if (!customer) notFound();
   const kept = customer.promises.filter((item) => item.status === "fulfilled").length;
   const broken = customer.promises.filter((item) => item.status === "missed").length;

@@ -5,7 +5,7 @@ import { ArrowLeft, Bot, CheckCircle2, Cog, Flag, Mail, MessageSquareReply, User
 import { ApprovalButtons } from "@/components/approval-buttons";
 import { humanizeEvent } from "@/components/activity-feed";
 import { StatusBadge, cx, formatDate } from "@/components/ui";
-import { getRequestContext } from "@/lib/auth";
+import { canManage, getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
 import { formatMoney } from "@/lib/domain/money";
 
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
-  const item = await repository.getCase(getRequestContext().companyId, id);
+  const item = await repository.getCase((await getPageContext()).companyId, id);
   return { title: item ? `${item.invoice.invoiceNumber} · ${item.customer.name}` : "Case" };
 }
 
@@ -29,7 +29,8 @@ const KIND = {
 
 export default async function CasePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { companyId } = getRequestContext();
+  const context = await getPageContext();
+  const { companyId } = context;
   const item = await repository.getCase(companyId, id);
   if (!item) notFound();
 
@@ -108,7 +109,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
               <p className="flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-[0.14em] text-[#8a5304]"><Flag size={13} aria-hidden="true" /> Your decision</p>
               <h2 className="mt-3 text-[15px] font-medium leading-snug text-ink">{action.message}</h2>
               <p className="mb-4 mt-1.5 text-[13px] leading-5 text-[#6b4a10]">{action.reason}</p>
-              <ApprovalButtons actionId={action.id} />
+              <ApprovalButtons actionId={action.id} readOnly={!canManage(context)} />
             </article>
           ))}
 
