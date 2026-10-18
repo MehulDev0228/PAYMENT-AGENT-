@@ -8,7 +8,7 @@
   - `reply-outcome.ts`: maps a reply classification to the permitted operational outcome.
   - `state-machine.ts`: allowed case transitions.
   - `case-views.ts`: named queue views shared by UI and API.
-- `lib/data`: tenant-scoped, async repository contract (`repository.ts`). All rules live in `CollectionsEngine` (`engine.ts`), which runs synchronously on one company's in-memory working set. Two adapters host it: `mock-repository.ts` (synthetic seed, fixed business date) and `postgres-repository.ts` (PostgreSQL/Supabase), selected by `AERA_DATA_ADAPTER` in `index.ts`.
+- `lib/data`: tenant- and region-scoped, async repository contract (`repository.ts`). Every call takes a `DataScope` (company plus `regions`, null for every region); the request context is one. All rules live in `CollectionsEngine` (`engine.ts`), which runs synchronously on one company's in-memory working set. Two adapters host it: `mock-repository.ts` (synthetic seed, fixed business date) and `postgres-repository.ts` (PostgreSQL/Supabase), selected by `AERA_DATA_ADAPTER` in `index.ts`.
 - `lib/ai`: replaceable language adapter. It drafts communications from verified facts and classifies replies. It never computes balances or decides outcomes.
 - `lib/auth`: who is calling. `context.ts` derives company, user and role from a verified Supabase session plus the caller's `public.users` row, or from the n8n token on automation routes, and holds the permission checks. Request headers never carry identity.
 - `lib/agent`: read-only question router for Ask AERA. Each answer names the tool that produced it.
@@ -30,6 +30,8 @@ The repository computes balances, due state, matching and promise outcomes. The 
 | Viewer | Same | Read only. Every mutation answers 403 and the UI hides or disables its controls |
 | n8n | `Authorization: Bearer $AERA_INTERNAL_API_TOKEN`, bound to `AERA_AUTOMATION_COMPANY_ID` | `/api/automation/*`, the action queue (`GET /api/collections/actions`) and the execution callback. Never approvals, imports or payment matches |
 
+**Regions.** `public.users.regions` narrows any user to customers in those regions (null: every region). `createRepository` applies it once for every adapter: for a regional scope the engine runs on `customerView(...)`, a view of the working set holding only those customers and their rows, and rows the engine adds are copied back before the adapter persists. Rows outside the view simply do not exist for the call. Imports run on the whole company (duplicate checks and customer matching must see every region) and reject invoice rows outside the scope; payment imports need every region. A `?region=` filter is the same mechanism, narrowed further by `withRegion`, and can never widen a scope.
+
 Dev mode (`AERA_AUTH_MODE=dev`, the default when no Supabase project is configured) skips sign-in and acts as a demo finance manager. It is refused for a database adapter in production.
 
 ## Main flows
@@ -48,7 +50,7 @@ Local development uses the generated fictional dataset through the mock adapter 
 - **Writes** run in one transaction: take a per-company advisory lock, reload, run the engine, then upsert only the rows that changed and insert the new audit events. Concurrent writers for a company are serialised, and a failed step leaves no partial state.
 - **Audit history** is append-only and never loaded into memory; it is queried directly.
 - **Business date** is today in the company's timezone (`companies.timezone`).
-- **Tenancy**: the app connects with a server-side role, so every statement is scoped to `company_id` in the adapter. RLS (JWT `company_id` claim) still guards any direct client access.
+- **Tenancy**: the app connects with a server-side role, so every statement is scoped to `company_id` in the adapter. RLS (JWT `company_id` claim) still guards any direct client access, and restrictive policies from migration 003 add the caller's regions.
 - **Scale**: loading the working set per call suits a business with up to tens of thousands of open records. Beyond that, move hot reads (lists, search) to targeted SQL behind the same contract.
 
 ## Design system

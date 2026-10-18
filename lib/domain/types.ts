@@ -167,6 +167,15 @@ export interface CollectionOverview {
   aging: Array<{ label: string; amount: number; count: number }>;
 }
 
+/** A region's receivables. `region` is null for customers without a region. */
+export interface RegionSummary extends CollectionOverview {
+  region: string | null;
+  customerCount: number;
+  /** Active promises dated within the next 7 days (or already past, awaiting the promise check). */
+  promisesDueCount: number;
+  promisesDueAmount: number;
+}
+
 export interface CaseListItem extends CollectionCase {
   invoice: Invoice;
   customer: Customer;

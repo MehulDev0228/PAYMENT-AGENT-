@@ -16,8 +16,8 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
   const context = await getPageContext();
   const { companyId } = context;
   const decided = view === "decided";
-  const waiting = await repository.listApprovals(companyId);
-  const history = await repository.listApprovals(companyId, "decided");
+  const waiting = await repository.listApprovals(context);
+  const history = await repository.listApprovals(context, "decided");
   const items = decided ? history : waiting;
   const db = sqlDatabase();
   const names = db ? await userNames(db, companyId) : new Map<string, string>();

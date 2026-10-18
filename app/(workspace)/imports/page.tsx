@@ -7,19 +7,21 @@ export const metadata: Metadata = { title: "Imports" };
 export const dynamic = "force-dynamic";
 
 const SAFEGUARDS = [
-  ["Tenant scoped", "Every row is written only to the authenticated company."],
+  ["Tenant scoped", "Every row is written only to the authenticated company, and only to your regions."],
   ["Duplicate aware", "Repeated invoice numbers and payment references are rejected per row."],
   ["Never guessed", "A payment that could fit more than one invoice waits for a person."],
 ];
 
 export default async function ImportsPage() {
-  const readOnly = !canManage(await getPageContext());
+  const context = await getPageContext();
+  const readOnly = !canManage(context);
+  const regional = context.regions !== null;
   return (
     <div className="space-y-6">
       <PageHeader eyebrow="Data operations" title="Bring your ledger in." muted="Validated row by row before anything changes." />
       <div className="grid gap-4 xl:grid-cols-2">
         <ImportPanel kind="invoices" n="01" readOnly={readOnly} />
-        <ImportPanel kind="payments" n="02" readOnly={readOnly} />
+        <ImportPanel kind="payments" n="02" readOnly={readOnly || regional} readOnlyReason={readOnly ? undefined : "Bank files cover every region. A user with access to all regions imports them."} />
       </div>
       <section className="grid overflow-hidden rounded-2xl bg-ink text-white md:grid-cols-3">
         {SAFEGUARDS.map(([title, body], index) => (

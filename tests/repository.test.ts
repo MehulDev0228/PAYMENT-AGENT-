@@ -4,12 +4,15 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { applyMigrations, createCompany, seedDemo } from "@/lib/data/db-setup";
 import { createMockRepository } from "@/lib/data/mock-repository";
 import { businessNow, createPostgresRepository } from "@/lib/data/postgres-repository";
-import type { AeraRepository } from "@/lib/data/repository";
+import { companyScope, withRegion, type AeraRepository, type DataScope, type InvoiceImportRow } from "@/lib/data/repository";
 import { DEMO_COMPANY_ID, DEMO_NOW } from "@/lib/data/seed";
 import type { SqlClient, SqlDatabase } from "@/lib/data/sql";
+import { upsertWorkspaceUser } from "@/lib/data/users";
+import type { RegionSummary } from "@/lib/domain/types";
 
-const C = DEMO_COMPANY_ID;
+const C = companyScope(DEMO_COMPANY_ID);
 const OTHER_COMPANY = "00000000-0000-0000-0000-0000000000aa";
+const OTHER = companyScope(OTHER_COMPANY);
 const USER = "user-demo-manager";
 
 function pgliteDatabase(pg: PGliteInterface): SqlDatabase {
@@ -156,9 +159,137 @@ describe.each(adapters)("%s repository", (_name, make) => {
     });
 
     it("scopes every read to the company", async () => {
-      expect(await repo.listCases(OTHER_COMPANY)).toHaveLength(0);
-      expect((await repo.overview(OTHER_COMPANY)).totalOutstanding).toBe(0);
-      expect(await repo.search(OTHER_COMPANY, "INV-1042")).toHaveLength(0);
+      expect(await repo.listCases(OTHER)).toHaveLength(0);
+      expect((await repo.overview(OTHER)).totalOutstanding).toBe(0);
+      expect(await repo.search(OTHER, "INV-1042")).toHaveLength(0);
+    });
+  });
+
+  describe("regions", () => {
+    const NORTH: DataScope = { companyId: DEMO_COMPANY_ID, regions: ["North"] };
+    const regionMap = async () => new Map((await repo.listCustomers(C)).map((customer) => [customer.id, customer.region]));
+    const southCustomer = async () => (await repo.listCustomers(C)).find((customer) => customer.region === "South")!;
+    const approvalIn = async (region: string) => {
+      const regions = await regionMap();
+      return (await repo.listApprovals(C)).find((approval) => regions.get(approval.customerId) === region)!;
+    };
+    const invoiceRow = (overrides: Partial<InvoiceImportRow>): InvoiceImportRow => ({
+      invoice_number: "INV-R-1", customer_name: "Region Test Ltd", customer_email: "ap@region-test.example", invoice_date: "2026-08-01", due_date: "2026-09-01", amount: 5_000, currency: "INR", ...overrides,
+    });
+
+    it("filters cases, customers, payments and promises by region", async () => {
+      const regions = await regionMap();
+      const north = withRegion(C, "North");
+      const cases = await repo.listCases(north);
+      expect(cases.length).toBeGreaterThan(0);
+      expect(cases.every((item) => item.customer.region === "North")).toBe(true);
+      expect(cases).toHaveLength((await repo.listCases(C)).filter((item) => item.customer.region === "North").length);
+      const customers = await repo.listCustomers(north);
+      expect(customers).toHaveLength([...regions.values()].filter((region) => region === "North").length);
+      const payments = await repo.listPayments(north);
+      expect(payments.length).toBeGreaterThan(0);
+      expect(payments.every((payment) => regions.get(payment.customerId!) === "North")).toBe(true);
+      const promises = await repo.listPromiseItems(north);
+      expect(promises.length).toBeGreaterThan(0);
+      expect(promises.every((promise) => regions.get(promise.customerId) === "North")).toBe(true);
+      // Case and spacing do not matter; an unknown region shows nothing.
+      expect(await repo.listCases(withRegion(C, "  nORTH "))).toHaveLength(cases.length);
+      expect(await repo.listCases(withRegion(C, "Atlantis"))).toHaveLength(0);
+      expect((await repo.overview(withRegion(C, "Atlantis"))).totalOutstanding).toBe(0);
+    });
+
+    it("summarises every region, adding up to the company total", async () => {
+      const rows = await repo.regionSummary(C);
+      expect(rows.map((row) => row.region)).toEqual(["Central", "East", "North", "South", "West"]);
+      const total = await repo.overview(C);
+      const add = (pick: (row: RegionSummary) => number) => rows.reduce((sum, row) => sum + pick(row), 0);
+      expect(add((row) => row.totalOutstanding)).toBeCloseTo(total.totalOutstanding, 2);
+      expect(add((row) => row.totalOverdue)).toBeCloseTo(total.totalOverdue, 2);
+      expect(add((row) => row.collectedThisMonth)).toBeCloseTo(total.collectedThisMonth, 2);
+      total.aging.forEach((bucket, index) => expect(add((row) => row.aging[index].amount)).toBeCloseTo(bucket.amount, 2));
+      expect(add((row) => row.customerCount)).toBe((await repo.listCustomers(C)).length);
+      expect(add((row) => row.promisesDueCount)).toBeGreaterThan(0);
+      const north = rows.find((row) => row.region === "North")!;
+      expect(north).toMatchObject(await repo.overview(withRegion(C, "North")));
+      expect((await repo.regionSummary(NORTH)).map((row) => row.region)).toEqual(["North"]);
+      expect(await repo.regions(NORTH)).toEqual(["North"]);
+    });
+
+    it("hides another region's case, invoice, customer and payment from a regional user", async () => {
+      const regions = await regionMap();
+      const southCase = (await repo.listCases(C)).find((item) => item.customer.region === "South")!;
+      expect(await repo.getCase(NORTH, southCase.id)).toBeUndefined();
+      expect(await repo.getInvoice(NORTH, southCase.invoiceId)).toBeUndefined();
+      expect(await repo.getCustomer(NORTH, southCase.customerId)).toBeUndefined();
+      expect(await repo.getCustomerDetail(NORTH, southCase.customerId)).toBeUndefined();
+      expect((await repo.listCases(NORTH)).some((item) => item.customer.region !== "North")).toBe(false);
+      expect(await repo.search(NORTH, southCase.invoice.invoiceNumber)).toHaveLength(0);
+      expect(await repo.search(C, southCase.invoice.invoiceNumber)).not.toHaveLength(0);
+      const southPayment = (await repo.listPayments(C, "matched")).find((payment) => regions.get(payment.customerId!) === "South")!;
+      expect((await repo.listPayments(NORTH)).some((payment) => payment.id === southPayment.id)).toBe(false);
+      // A payment not tied to a customer belongs to no region.
+      const [review] = await repo.listPayments(C, "payment_match_review_required");
+      expect(await repo.listPayments(NORTH, "payment_match_review_required")).toHaveLength(0);
+      await expect(repo.paymentCandidates(NORTH, review.id)).rejects.toThrow(/not found/);
+      // The overview is the region's own.
+      expect((await repo.overview(NORTH)).totalOutstanding).toBeCloseTo((await repo.overview(withRegion(C, "North"))).totalOutstanding, 2);
+    });
+
+    it("hides another region's audit trail and company-wide events", async () => {
+      const south = await approvalIn("South");
+      await repo.decideAction(C, south.id, "approved", USER);
+      expect(await repo.listAudit(C, { entityId: south.id })).not.toHaveLength(0);
+      expect(await repo.listAudit(NORTH, { entityId: south.id })).toHaveLength(0);
+      await repo.runDailyMonitor(C);
+      const feed = await repo.listAudit(NORTH, { limit: 200 });
+      expect(feed.length).toBeGreaterThan(0);
+      expect(feed.some((event) => event.entityId === south.id || event.entityType === "automation" || event.entityType === "import")).toBe(false);
+    });
+
+    it("stops a regional user from changing another region's case, invoice or payment", async () => {
+      const south = await approvalIn("South");
+      await expect(repo.decideAction(NORTH, south.id, "approved", USER)).rejects.toThrow(/not found/);
+      await expect(repo.markActionExecuted(NORTH, south.id, { subject: "s", body: "b" })).rejects.toThrow(/not found/);
+      expect((await repo.listApprovals(C)).find((item) => item.id === south.id)?.status).toBe("awaiting_approval");
+
+      const [review] = await repo.listPayments(C, "payment_match_review_required");
+      const target = (await repo.paymentCandidates(C, review.id))[0];
+      await expect(repo.resolvePayment(NORTH, review.id, target.invoice.id, USER)).rejects.toThrow(/not found/);
+      expect((await repo.listPayments(C, "payment_match_review_required")).map((payment) => payment.id)).toContain(review.id);
+
+      const customer = await southCustomer();
+      const before = (await repo.getCustomerDetail(C, customer.id))!.invoices.length;
+      const result = await repo.importInvoices(NORTH, [
+        invoiceRow({ invoice_number: "INV-R-SOUTH", customer_name: customer.name, customer_email: customer.email, customer_code: customer.customerCode }),
+        invoiceRow({ invoice_number: "INV-R-WEST", region: "West" }),
+        invoiceRow({ invoice_number: "INV-R-NONE" }),
+        invoiceRow({ invoice_number: "INV-R-NORTH", customer_email: "ap@north-new.example", region: "north" }),
+      ], USER);
+      expect(result).toMatchObject({ imported: 1, rejected: 3 });
+      expect(result.errors.map((error) => error.message)).toEqual([
+        "INV-R-SOUTH belongs to region South, outside your regions", "INV-R-WEST belongs to region West, outside your regions", "INV-R-NONE belongs to no region, outside your regions",
+      ]);
+      expect((await repo.getCustomerDetail(C, customer.id))!.invoices).toHaveLength(before);
+
+      const payments = repo.importPayments(NORTH, [{ payment_reference: "UTR-REGION", invoice_number: "INV-1042", amount: 1, payment_date: "2026-09-27" }]);
+      await expect(payments).rejects.toMatchObject({ status: 403 });
+      expect((await repo.listPayments(C)).some((payment) => payment.paymentReference === "UTR-REGION")).toBe(false);
+    });
+
+    it("saves a regional user's changes inside their region", async () => {
+      const north = await approvalIn("North");
+      await repo.decideAction(NORTH, north.id, "approved", USER);
+      expect((await repo.listApprovals(C, "decided")).find((item) => item.id === north.id)?.status).toBe("approved");
+
+      await repo.importInvoices(NORTH, [invoiceRow({ invoice_number: "INV-R-NEW", customer_email: "ap@north-new.example", region: "North" })], USER);
+      const run = await repo.runDailyMonitor(NORTH);
+      const regions = await regionMap();
+      expect(run.actions.length).toBeGreaterThan(0);
+      expect(run.actions.every((action) => regions.get(action.customerId) === "North")).toBe(true);
+      const opened = (await repo.listCases(C, { q: "INV-R-NEW" }))[0];
+      expect(opened?.customer.region).toBe("North");
+      const actions = new Set((await repo.listActions(C)).map((action) => action.id));
+      expect(run.actions.every((action) => actions.has(action.id))).toBe(true);
     });
   });
 });
@@ -171,7 +302,7 @@ describe("postgres adapter", () => {
     const item = (await restarted.listCases(C, { q: "INV-1042" })).find((c) => c.invoice.invoiceNumber === "INV-1042")!;
     expect(item.status).toBe("closed");
     expect(item.invoice).toMatchObject({ amountPaid: 84_000, amountOutstanding: 0, status: "paid" });
-    const [row] = await db.query<{ amount_paid: string }>("select amount_paid::text from public.invoices where company_id = $1 and invoice_number = 'INV-1042'", [C]);
+    const [row] = await db.query<{ amount_paid: string }>("select amount_paid::text from public.invoices where company_id = $1 and invoice_number = 'INV-1042'", [C.companyId]);
     expect(Number(row.amount_paid)).toBe(84_000);
   });
 
@@ -192,7 +323,32 @@ describe("postgres adapter", () => {
 
   it("reports an unknown company instead of returning empty data", async () => {
     const { repo } = await freshPostgres();
-    await expect(repo.overview("00000000-0000-0000-0000-00000000beef")).rejects.toThrow(/not found/);
+    await expect(repo.overview(companyScope("00000000-0000-0000-0000-00000000beef"))).rejects.toThrow(/not found/);
+  });
+
+  it("limits direct client access to the user's regions through RLS", async () => {
+    const { db } = await freshPostgres();
+    const NORTH_USER = "66666666-6666-4666-8666-666666666666";
+    const ALL_USER = "77777777-7777-4777-8777-777777777777";
+    for (const id of [NORTH_USER, ALL_USER]) await db.query("insert into auth.users (id) values ($1)", [id]);
+    await upsertWorkspaceUser(db, { id: NORTH_USER, companyId: C.companyId, name: "Nita North", email: "nita@aera.example", role: "viewer", regions: ["North"] });
+    await upsertWorkspaceUser(db, { id: ALL_USER, companyId: C.companyId, name: "Asha All", email: "asha@aera.example", role: "viewer" });
+    await db.exec(`create role aera_client; grant usage on schema public, auth to aera_client; grant select on all tables in schema public to aera_client;`);
+    const asClient = (userId: string) => db.transaction(async (tx) => {
+      await tx.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: userId, company_id: C.companyId })]);
+      await tx.exec("set local role aera_client");
+      const [row] = await tx.query<{ regions: string[] | null; invoices: number; cases: number; audit: number }>(
+        `select (select array_agg(distinct region order by region) from public.customers) as regions, (select count(*)::int from public.invoices) as invoices,
+                (select count(*)::int from public.collection_cases) as cases, (select count(*)::int from public.audit_events) as audit`);
+      return row;
+    });
+    const [north] = await db.query<{ invoices: number; cases: number }>(
+      `select (select count(*)::int from public.invoices i join public.customers c on c.id = i.customer_id where c.region = 'North') as invoices,
+              (select count(*)::int from public.collection_cases k join public.customers c on c.id = k.customer_id where c.region = 'North') as cases`);
+    expect(await asClient(NORTH_USER)).toEqual({ regions: ["North"], invoices: north.invoices, cases: north.cases, audit: 0 });
+    const all = await asClient(ALL_USER);
+    expect(all.regions).toEqual(["Central", "East", "North", "South", "West"]);
+    expect(all.audit).toBeGreaterThan(0);
   });
 
   it("uses the company's calendar date", () => {

@@ -8,7 +8,7 @@ import { ReadOnlyNote, cx } from "./ui";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
-export function ImportPanel({ kind, n, readOnly = false }: { kind: "invoices" | "payments"; n: string; readOnly?: boolean }) {
+export function ImportPanel({ kind, n, readOnly = false, readOnlyReason = "Read-only access. A manager imports data." }: { kind: "invoices" | "payments"; n: string; readOnly?: boolean; readOnlyReason?: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File>();
   const [result, setResult] = useState<ImportResult>();
@@ -63,7 +63,7 @@ export function ImportPanel({ kind, n, readOnly = false }: { kind: "invoices" | 
         <button type="button" disabled={readOnly || !file || busy} onClick={upload} className="btn-primary">{busy ? "Validating…" : "Import and validate"}</button>
         <a className="btn-outline" href={`/templates/${kind === "invoices" ? "invoice" : "payment"}-import.csv`} download><Download size={15} aria-hidden="true" /> Template</a>
       </div>
-      {readOnly && <div className="mt-3"><ReadOnlyNote>Read-only access. A manager imports data.</ReadOnlyNote></div>}
+      {readOnly && <div className="mt-3"><ReadOnlyNote>{readOnlyReason}</ReadOnlyNote></div>}
       {error && <p role="alert" className="mt-4 flex items-start gap-2 rounded-xl bg-[#fdecea] p-3 text-[13px] text-danger"><CircleAlert size={15} className="mt-0.5 shrink-0" />{error}</p>}
       {result && (
         <div aria-live="polite" className="animate-rise mt-4 rounded-xl border border-line bg-canvas p-4">

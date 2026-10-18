@@ -9,14 +9,13 @@ export const dynamic = "force-dynamic";
 
 export default async function WorkspaceLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const context = await getPageContext();
-  const { companyId } = context;
-  const viewer = { name: context.name, role: ROLE_LABELS[context.role], devMode: context.mode === "dev" };
+  const viewer = { name: context.name, role: `${ROLE_LABELS[context.role]}${context.regions ? ` · ${context.regions.join(", ")}` : ""}`, devMode: context.mode === "dev" };
   const counts = {
-    approvals: (await repository.listActions(companyId, "awaiting_approval")).length,
-    review: (await repository.listPayments(companyId, "payment_match_review_required")).length,
-    attention: (await repository.listCases(companyId, { statuses: CASE_VIEWS.attention.statuses })).length,
+    approvals: (await repository.listActions(context, "awaiting_approval")).length,
+    review: (await repository.listPayments(context, "payment_match_review_required")).length,
+    attention: (await repository.listCases(context, { statuses: CASE_VIEWS.attention.statuses })).length,
   };
-  const businessDate = formatDate(await repository.today(companyId));
+  const businessDate = formatDate(await repository.today(context));
   return (
     <div className="min-h-dvh">
       <Sidebar counts={counts} businessDate={businessDate} />

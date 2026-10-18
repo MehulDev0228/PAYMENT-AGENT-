@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiError, getApiContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
+import { withRegion } from "@/lib/data/repository";
 import { CASE_VIEWS, isCaseView } from "@/lib/domain/case-views";
 import type { CaseStatus } from "@/lib/domain/types";
 
@@ -13,7 +14,7 @@ export async function GET(request: Request) {
     const view = params.get("view") || undefined;
     const status = params.get("status");
     const statuses = status ? [status as CaseStatus] : isCaseView(view) ? CASE_VIEWS[view].statuses : undefined;
-    return NextResponse.json(await repository.listCases(context.companyId, { statuses, q: params.get("q") || undefined }));
+    return NextResponse.json(await repository.listCases(withRegion(context, params.get("region")), { statuses, q: params.get("q") || undefined }));
   } catch (error) {
     return apiError(error, "Lookup failed", 500);
   }

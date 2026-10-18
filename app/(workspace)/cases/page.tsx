@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { Search } from "lucide-react";
 import { CasesTable } from "@/components/cases-table";
+import { RegionFilter, regionParam } from "@/components/region-filter";
 import { PageHeader, Pagination, Tabs } from "@/components/ui";
 import { getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
+import { withRegion } from "@/lib/data/repository";
 import { CASE_VIEWS, isCaseView, type CaseView } from "@/lib/domain/case-views";
 import type { CollectionCase } from "@/lib/domain/types";
 
@@ -13,23 +15,25 @@ export const dynamic = "force-dynamic";
 const PAGE_SIZE = 25;
 const PRIORITIES: Array<CollectionCase["priority"]> = ["critical", "high", "medium", "low"];
 
-type Search = { view?: string; q?: string; priority?: string; page?: string };
+type Search = { view?: string; q?: string; priority?: string; region?: string; page?: string };
 
 export default async function CasesPage({ searchParams }: { searchParams: Promise<Search> }) {
   const params = await searchParams;
-  const { companyId } = await getPageContext();
+  const context = await getPageContext();
   const view: CaseView = isCaseView(params.view) ? params.view : "open";
   const q = params.q?.trim() || undefined;
   const priority = PRIORITIES.find((item) => item === params.priority);
+  const region = regionParam(params.region);
 
   const href = (next: Partial<Search>) => {
-    const merged = { view, q, priority, ...next };
+    const merged = { view, q, priority, region, ...next };
     const isDefault = ([key, value]: [string, string | undefined]) => !value || (key === "view" && value === "open") || (key === "page" && value === "1");
     const query = new URLSearchParams(Object.entries(merged).filter((entry) => !isDefault(entry)) as Array<[string, string]>);
     return `/cases${query.size ? `?${query}` : ""}`;
   };
 
-  const matching = await repository.listCases(companyId, { q, priority });
+  const matching = await repository.listCases(withRegion(context, region), { q, priority });
+  const regions = await repository.regions(context);
   const inView = (key: CaseView) => matching.filter((item) => CASE_VIEWS[key].statuses.includes(item.status));
   const counts = Object.fromEntries((Object.keys(CASE_VIEWS) as CaseView[]).map((key) => [key, inView(key).length]));
   const all = inView(view);
@@ -39,13 +43,16 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Operational queue" title="Collection cases." muted="Every invoice that needs attention, with its next step." />
+      <PageHeader eyebrow="Operational queue" title="Collection cases." muted="Every invoice that needs attention, with its next step.">
+        <RegionFilter regions={regions} active={region} hrefFor={(next) => href({ region: next, page: undefined })} />
+      </PageHeader>
       <div className="panel overflow-hidden">
         <div className="border-b border-line px-3 pt-1">
           <Tabs active={view} items={(Object.keys(CASE_VIEWS) as CaseView[]).map((key) => ({ key, label: CASE_VIEWS[key].label, href: href({ view: key, page: undefined }), count: counts[key] }))} />
         </div>
         <form action="/cases" className="flex flex-wrap gap-2 border-b border-line px-5 py-3" role="search">
             {view !== "open" && <input type="hidden" name="view" value={view} />}
+            {region && <input type="hidden" name="region" value={region} />}
             <label className="relative">
               <span className="sr-only">Search cases</span>
               <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />

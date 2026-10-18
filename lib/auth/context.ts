@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { DEMO_COMPANY_ID } from "@/lib/data/seed";
+import { parseRegions } from "@/lib/domain/regions";
 import type { UserRole } from "@/lib/domain/types";
 
 /**
@@ -19,11 +20,16 @@ export interface RequestContext {
   name: string;
   email?: string;
   mode: AuthMode;
+  /**
+   * The regions this caller may see and act on; null is every region. A RequestContext is the
+   * repository's DataScope, so passing it to the repository enforces this on every call.
+   */
+  regions: string[] | null;
 }
 
 export type AuthEnv = Partial<Record<
   | "AERA_AUTH_MODE" | "AERA_DATA_ADAPTER" | "NODE_ENV" | "NEXT_PUBLIC_SUPABASE_URL" | "NEXT_PUBLIC_SUPABASE_ANON_KEY"
-  | "AERA_DEV_COMPANY_ID" | "AERA_DEV_ROLE" | "AERA_INTERNAL_API_TOKEN" | "AERA_AUTOMATION_COMPANY_ID",
+  | "AERA_DEV_COMPANY_ID" | "AERA_DEV_ROLE" | "AERA_DEV_REGIONS" | "AERA_INTERNAL_API_TOKEN" | "AERA_AUTOMATION_COMPANY_ID",
   string
 >>;
 
@@ -73,7 +79,7 @@ export function resolveAuthMode(env: AuthEnv): AuthMode {
 export interface SessionUser { id: string; email?: string }
 
 /** The caller's row in public.users. */
-export interface UserProfile { id: string; companyId: string; role: UserRole; name: string; email: string }
+export interface UserProfile { id: string; companyId: string; role: UserRole; name: string; email: string; regions: string[] | null }
 
 export interface ContextSource {
   /** The Authorization header, only consulted on routes that accept the automation token. */
@@ -89,7 +95,8 @@ export interface ContextSource {
 export function devContext(env: AuthEnv): RequestContext {
   const role = env.AERA_DEV_ROLE || "finance_manager";
   if (!isUserRole(role)) throw new Error(`Unknown AERA_DEV_ROLE "${role}"`);
-  return { companyId: env.AERA_DEV_COMPANY_ID || DEMO_COMPANY_ID, userId: "user-demo-manager", role, name: "Mehul Patel", email: "mehul@aera.example", mode: "dev" };
+  const regions = env.AERA_DEV_REGIONS ? parseRegions(env.AERA_DEV_REGIONS) : null;
+  return { companyId: env.AERA_DEV_COMPANY_ID || DEMO_COMPANY_ID, userId: "user-demo-manager", role, name: "Mehul Patel", email: "mehul@aera.example", mode: "dev", regions };
 }
 
 function sameSecret(actual: string, expected: string): boolean {
@@ -106,7 +113,7 @@ function automationContext(source: ContextSource, env: AuthEnv, mode: AuthMode):
   const companyId = env.AERA_AUTOMATION_COMPANY_ID || (mode === "dev" ? devContext(env).companyId : undefined);
   if (!companyId) throw new Error("AERA_AUTOMATION_COMPANY_ID must be set to the company n8n works for");
   if (source.companyHeader && source.companyHeader !== companyId) throw new AuthError(403, "x-company-id does not match the company this automation token is issued for");
-  return { companyId, userId: "automation:n8n", role: "automation", name: "n8n automation", mode };
+  return { companyId, userId: "automation:n8n", role: "automation", name: "n8n automation", mode, regions: null };
 }
 
 /**
@@ -126,7 +133,7 @@ export async function resolveRequestContext(source: ContextSource, env: AuthEnv)
   const profile = await source.findProfile(user.id);
   if (!profile) throw new AuthError(403, "This account has no access to an AERA workspace. Ask an admin to add you.");
   if (!isUserRole(profile.role)) throw new AuthError(403, "Unknown workspace role");
-  return { companyId: profile.companyId, userId: profile.id, role: profile.role, name: profile.name, email: profile.email, mode };
+  return { companyId: profile.companyId, userId: profile.id, role: profile.role, name: profile.name, email: profile.email, mode, regions: profile.regions };
 }
 
 export function canManage(context: Pick<RequestContext, "role">): boolean {

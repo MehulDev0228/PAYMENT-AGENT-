@@ -28,7 +28,8 @@ npm run build   # production build
 
 | Route | Purpose |
 | --- | --- |
-| `/dashboard` | Today's agenda (decisions, promises due, payments to match, missed promises), KPIs, priority cases, ageing, audit activity |
+| `/dashboard` | Today's agenda (decisions, promises due, payments to match, missed promises), KPIs, a by-region table, priority cases, ageing, audit activity |
+| `/regions` | The region sheet: outstanding, overdue, every ageing bucket, promises due, missed promises and collected this month per region, with a total row and CSV download |
 | `/cases`, `/cases/[id]` | Queue with views, search, priority filter and pagination; case paper trail merging emails, payments and audit events |
 | `/approvals` | Human decision queue (escalations, disputes, payment-plan requests) with decision history |
 | `/promises` | Active / missed / kept / superseded promises |
@@ -41,6 +42,18 @@ npm run build   # production build
 | `/login` | Email and password sign-in (Supabase Auth) |
 
 Press `Ctrl K` / `⌘ K` anywhere in the workspace to search invoices, customers and pages.
+
+## Regions
+
+Region is the customer's `region` (the `region` column of the invoice import). It is meant to replace the per-region outstanding sheets a finance team keeps in Excel.
+
+- **Filter.** `/dashboard`, `/cases`, `/customers`, `/payments` and `/promises` take `?region=North` (region pills under the page title). So do their APIs: `GET /api/collections/overview`, `/api/collections/cases`, `/api/customers`, `/api/payments` and `/api/collections/promises`. Regions compare case- and whitespace-insensitively.
+- **Region sheet.** `/regions` and `GET /api/regions` (`?format=csv` for a spreadsheet) give one row per region, plus "No region" for customers without one. Ask AERA answers "outstanding by region" from the same data.
+- **Region-scoped users.** `public.users.regions` (migration `003_user_regions.sql`) limits a user to customers in those regions; `NULL` means every region. Give it with `npm run db:add-user -- nita@yourco.com --company <id> --role collection_manager --regions North,West`. Without `--regions` a new user gets every region and an existing user keeps theirs; `--regions all` lifts a limit.
+  - The limit is enforced in the repository (`lib/data/repository.ts`), not the UI: the caller's context is the data scope of every call, and the engine runs on a view holding only that scope's customers and their invoices, payments, cases, actions, promises and messages. Another region's case, invoice or payment reads as not found and cannot be approved, executed or matched.
+  - A regional user may import invoices for their regions only (other rows are rejected with the reason). Bank files span every region, so payment imports, and matching payments not yet tied to a customer, need a user with every region.
+  - The activity feed of a regional user shows events of rows in their regions, not company-wide import or job summaries. Restrictive RLS policies in migration 003 apply the same limits to direct Supabase client access.
+- In dev mode, `AERA_DEV_REGIONS=North` makes the demo user regional.
 
 ## Acceptance scenario
 
@@ -69,7 +82,7 @@ The invoice is settled, the promise is marked kept, the case closes and each ste
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase project used for sign-in |
 | `SUPABASE_SERVICE_ROLE_KEY` | Only read by `npm run db:add-user` to create sign-ins. Never needed by the running app |
 | `AERA_INTERNAL_API_TOKEN`, `AERA_AUTOMATION_COMPANY_ID` | n8n service token and the one company it acts for. Accepted only on `/api/automation/*`, `GET /api/collections/actions` and the execution callback. Without a token those routes need a signed-in manager |
-| `AERA_DEV_COMPANY_ID`, `AERA_DEV_ROLE` | Dev mode only: the company and role every request acts as (set `AERA_DEV_ROLE=viewer` to try read-only access) |
+| `AERA_DEV_COMPANY_ID`, `AERA_DEV_ROLE`, `AERA_DEV_REGIONS` | Dev mode only: the company, role and regions every request acts as (set `AERA_DEV_ROLE=viewer` to try read-only access, `AERA_DEV_REGIONS=North` to try a regional user) |
 | `AERA_DATA_ADAPTER`, `DATABASE_URL` | `postgres` persists everything to PostgreSQL/Supabase; `mock` (default) keeps the in-memory demo |
 
 ## Persisting to Supabase / PostgreSQL
@@ -89,13 +102,15 @@ Identity comes only from the Supabase session: the app verifies the session JWT,
 1. Complete [Persisting to Supabase / PostgreSQL](#persisting-to-supabase--postgresql) steps 1 to 3 (`AERA_DATA_ADAPTER=postgres` is required: workspace users live in the database).
 2. In `.env.local` set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Supabase: Project Settings → API). Auth mode switches to `supabase` automatically.
 3. In the Supabase dashboard, Authentication → Sign In / Providers: keep Email enabled and turn **off** "Allow new users to sign up". Self-registered accounts would get no access anyway (no `public.users` row means 403), but there is no reason to allow them.
-4. Add people: `npm run db:add-user -- asha@yourco.com --company <company id> --role finance_manager --name "Asha Rao"`. If the email has no sign-in yet, the script creates one (needs `SUPABASE_SERVICE_ROLE_KEY`) and prints an initial password once; otherwise it links the existing sign-in. Re-run it to change someone's role.
+4. Add people: `npm run db:add-user -- asha@yourco.com --company <company id> --role finance_manager --name "Asha Rao"`. If the email has no sign-in yet, the script creates one (needs `SUPABASE_SERVICE_ROLE_KEY`) and prints an initial password once; otherwise it links the existing sign-in. Re-run it to change someone's role. Add `--regions North,West` to limit someone to some regions (see [Regions](#regions)).
 5. `npm run dev`, open `/dashboard` and sign in.
 
 | Role | Access |
 | --- | --- |
 | `admin`, `finance_manager`, `collection_manager` | Everything in their company, including approve/reject, imports, payment matches and automation jobs |
 | `viewer` | Read-only: pages and read APIs work, every mutation answers 403 and its controls are hidden or disabled |
+
+Any role can also be limited to some regions; it then applies only to customers in those regions.
 
 Signed-out page requests redirect to `/login`, signed-out API calls get 401, and a signed-in account without a `public.users` row is told it has no access. For n8n, set `AERA_INTERNAL_API_TOKEN` and `AERA_AUTOMATION_COMPANY_ID` (see `n8n/README.md`).
 

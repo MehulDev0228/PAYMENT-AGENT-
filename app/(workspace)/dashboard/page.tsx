@@ -3,38 +3,48 @@ import Link from "next/link";
 import { ArrowUpRight, Banknote, CalendarClock, FileWarning, WalletCards } from "lucide-react";
 import { ActivityFeed } from "@/components/activity-feed";
 import { CasesTable } from "@/components/cases-table";
+import { RegionFilter, regionParam } from "@/components/region-filter";
+import { RegionTable } from "@/components/region-table";
 import { PageHeader, SectionTitle, StatTile, TextLink, formatDate } from "@/components/ui";
 import { getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
+import { withRegion } from "@/lib/data/repository";
 import { OPEN_CASE_STATUSES } from "@/lib/domain/case-views";
 import { formatMoney } from "@/lib/domain/money";
 
 export const metadata: Metadata = { title: "Overview" };
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
-  const { companyId } = await getPageContext();
-  const today = await repository.today(companyId);
-  const overview = await repository.overview(companyId);
-  const priorityCases = (await repository.listCases(companyId, { statuses: OPEN_CASE_STATUSES })).slice(0, 8);
-  const approvals = await repository.listApprovals(companyId);
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ region?: string }> }) {
+  const context = await getPageContext();
+  const region = regionParam((await searchParams).region);
+  const scope = withRegion(context, region);
+  const withRegionParam = (path: string) => (region ? `${path}${path.includes("?") ? "&" : "?"}region=${encodeURIComponent(region)}` : path);
+  const today = await repository.today(scope);
+  const overview = await repository.overview(scope);
+  const priorityCases = (await repository.listCases(scope, { statuses: OPEN_CASE_STATUSES })).slice(0, 8);
+  const approvals = await repository.listApprovals(scope);
   const horizon = new Date(`${today}T00:00:00Z`); horizon.setUTCDate(horizon.getUTCDate() + 3);
-  const promisesDue = (await repository.listPromiseItems(companyId, "active")).filter((item) => item.promisedDate <= horizon.toISOString().slice(0, 10));
-  const review = await repository.listPayments(companyId, "payment_match_review_required");
+  const promisesDue = (await repository.listPromiseItems(scope, "active")).filter((item) => item.promisedDate <= horizon.toISOString().slice(0, 10));
+  const review = await repository.listPayments(scope, "payment_match_review_required");
+  const regionRows = region ? [] : await repository.regionSummary(context);
+  const regions = region ? await repository.regions(context) : regionRows.flatMap((row) => (row.region ? [row.region] : []));
   const maxAging = Math.max(1, ...overview.aging.map((item) => item.amount));
   const overdueShare = overview.totalOutstanding ? Math.round((overview.totalOverdue / overview.totalOutstanding) * 100) : 0;
 
   const agenda = [
     { label: "Decisions waiting", value: approvals.length, helper: `${formatMoney(approvals.reduce((s, a) => s + a.amountOutstanding, 0), "INR", true)} at stake`, href: "/approvals" },
-    { label: "Promises due ≤ 3 days", value: promisesDue.length, helper: promisesDue[0] ? `Next: ${promisesDue[0].customerName}` : "Nothing due soon", href: "/promises" },
-    { label: "Payments to match", value: review.length, helper: review.length ? "Ambiguous bank entries" : "Bank feed is clean", href: "/payments" },
-    { label: "Missed promises", value: overview.missedPromiseCount, helper: "Escalated for review", href: "/promises?status=missed" },
+    { label: "Promises due ≤ 3 days", value: promisesDue.length, helper: promisesDue[0] ? `Next: ${promisesDue[0].customerName}` : "Nothing due soon", href: withRegionParam("/promises") },
+    { label: "Payments to match", value: review.length, helper: review.length ? "Ambiguous bank entries" : "Bank feed is clean", href: withRegionParam("/payments") },
+    { label: "Missed promises", value: overview.missedPromiseCount, helper: "Escalated for review", href: withRegionParam("/promises?status=missed") },
   ];
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow={`Overview · ${formatDate(today)}`} title="Receivables, today." muted="The routine is handled. Here's what needs you."
-        actions={<><Link href="/automation" className="btn-outline">Run automation</Link><Link href="/approvals" className="btn-primary">Review decisions <span className="tabular rounded-md bg-white/15 px-1.5 font-mono text-[11px]">{approvals.length}</span></Link></>} />
+      <PageHeader eyebrow={`Overview · ${region ? `${region} · ` : ""}${formatDate(today)}`} title="Receivables, today." muted="The routine is handled. Here's what needs you."
+        actions={<><Link href="/automation" className="btn-outline">Run automation</Link><Link href="/approvals" className="btn-primary">Review decisions <span className="tabular rounded-md bg-white/15 px-1.5 font-mono text-[11px]">{approvals.length}</span></Link></>}>
+        <RegionFilter regions={regions} active={region} hrefFor={(next) => (next ? `/dashboard?region=${encodeURIComponent(next)}` : "/dashboard")} />
+      </PageHeader>
 
       <section aria-label="Today's agenda" className="relative overflow-hidden rounded-2xl bg-ink p-2 text-white">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_120%_at_0%_0%,rgb(63_226_157/0.18),transparent_60%)]" aria-hidden="true" />
@@ -59,9 +69,16 @@ export default async function DashboardPage() {
         <StatTile label="Collected this month" value={formatMoney(overview.collectedThisMonth, "INR", true)} helper="Matched to invoices" icon={Banknote} accent="success" />
       </section>
 
+      {regionRows.length > 1 && (
+        <section className="panel overflow-hidden">
+          <SectionTitle title="By region" helper="Outstanding, overdue and collections for each region" action={<TextLink href="/regions">Region sheet <ArrowUpRight size={14} /></TextLink>} />
+          <RegionTable rows={regionRows} compact />
+        </section>
+      )}
+
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <article className="panel min-w-0 overflow-hidden">
-          <SectionTitle title="Priority cases" helper="Ranked by priority, age and exposure" action={<TextLink href="/cases">All cases <ArrowUpRight size={14} /></TextLink>} />
+          <SectionTitle title="Priority cases" helper="Ranked by priority, age and exposure" action={<TextLink href={withRegionParam("/cases")}>All cases <ArrowUpRight size={14} /></TextLink>} />
           <CasesTable cases={priorityCases} compact />
         </article>
         <div className="space-y-6">
@@ -89,7 +106,7 @@ export default async function DashboardPage() {
           </article>
           <article className="panel overflow-hidden">
             <SectionTitle title="Recent activity" helper="From the audit log" />
-            <ActivityFeed events={await repository.listAudit(companyId, { limit: 6 })} empty="Nothing has happened yet today" />
+            <ActivityFeed events={await repository.listAudit(scope, { limit: 6 })} empty="Nothing has happened yet today" />
           </article>
         </div>
       </section>

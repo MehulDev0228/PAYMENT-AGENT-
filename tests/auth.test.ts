@@ -14,7 +14,7 @@ const TOKEN = "automation-secret-token";
 
 const SUPABASE: AuthEnv = { NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co", NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon", AERA_DATA_ADAPTER: "postgres" };
 
-const profile = (role: UserProfile["role"]): UserProfile => ({ id: ASHA, companyId: ACME, role, name: "Asha Rao", email: "asha@acme.example" });
+const profile = (role: UserProfile["role"], regions: string[] | null = null): UserProfile => ({ id: ASHA, companyId: ACME, role, name: "Asha Rao", email: "asha@acme.example", regions });
 
 /** A request source with an Acme session, unless overridden. */
 function source(overrides: Partial<ContextSource> = {}): ContextSource {
@@ -51,7 +51,12 @@ describe("auth mode", () => {
 
 describe("Supabase session context", () => {
   it("takes company, user and role from the public.users row", async () => {
-    expect(await resolveRequestContext(source(), SUPABASE)).toEqual({ companyId: ACME, userId: ASHA, role: "finance_manager", name: "Asha Rao", email: "asha@acme.example", mode: "supabase" });
+    expect(await resolveRequestContext(source(), SUPABASE)).toEqual({ companyId: ACME, userId: ASHA, role: "finance_manager", name: "Asha Rao", email: "asha@acme.example", mode: "supabase", regions: null });
+  });
+
+  it("carries the user's regions from public.users", async () => {
+    const regional = source({ findProfile: async () => profile("collection_manager", ["North", "West"]) });
+    expect(await resolveRequestContext(regional, SUPABASE)).toMatchObject({ companyId: ACME, role: "collection_manager", regions: ["North", "West"] });
   });
 
   it("answers 401 without a session", async () => {
@@ -112,6 +117,11 @@ describe("dev mode", () => {
     await expect(resolveRequestContext(source(), { AERA_DEV_ROLE: "owner" })).rejects.toThrow(/AERA_DEV_ROLE/);
   });
 
+  it("can be limited to some regions for local testing", async () => {
+    expect((await resolveRequestContext(source(), {})).regions).toBeNull();
+    expect((await resolveRequestContext(source(), { AERA_DEV_REGIONS: "North, west" })).regions).toEqual(["North", "west"]);
+  });
+
   it("requires the token on automation routes once one is configured", async () => {
     const env: AuthEnv = { AERA_INTERNAL_API_TOKEN: TOKEN };
     expect((await authError(resolveRequestContext(source({ acceptsAutomation: true }), env))).status).toBe(401);
@@ -151,6 +161,15 @@ describe("workspace users in PostgreSQL", () => {
 
       await upsertWorkspaceUser(db, { id: ASHA, companyId: ACME, name: "Asha Rao", email: "asha@acme.example", role: "collection_manager" });
       expect((await findUserProfile(db, ASHA))?.role).toBe("collection_manager");
+
+      // Regions: set, kept when a later call does not mention them, cleared with null. Never an empty list.
+      await upsertWorkspaceUser(db, { id: ASHA, companyId: ACME, name: "Asha Rao", email: "asha@acme.example", role: "collection_manager", regions: ["North", "West"] });
+      expect((await findUserProfile(db, ASHA))?.regions).toEqual(["North", "West"]);
+      await upsertWorkspaceUser(db, { id: ASHA, companyId: ACME, name: "Asha Rao", email: "asha@acme.example", role: "finance_manager" });
+      expect(await findUserProfile(db, ASHA)).toMatchObject({ role: "finance_manager", regions: ["North", "West"] });
+      await upsertWorkspaceUser(db, { id: ASHA, companyId: ACME, name: "Asha Rao", email: "asha@acme.example", role: "finance_manager", regions: null });
+      expect((await findUserProfile(db, ASHA))?.regions).toBeNull();
+      await expect(upsertWorkspaceUser(db, { id: ASHA, companyId: ACME, name: "Asha Rao", email: "asha@acme.example", role: "viewer", regions: [] })).rejects.toThrow(/users_regions_not_empty/);
       expect(await findUserProfile(db, "user-demo-manager")).toBeNull();
     } finally {
       await pg.close();

@@ -5,11 +5,12 @@ import { applicablePolicyStep, priorityFor } from "@/lib/domain/policy";
 import { replyOutcome, type ReplyClassificationInput } from "@/lib/domain/reply-outcome";
 import { canTransition } from "@/lib/domain/state-machine";
 import { OPEN_CASE_STATUSES } from "@/lib/domain/case-views";
+import { inRegions, regionKey } from "@/lib/domain/regions";
 import type {
   ApprovalItem, AuditEvent, CaseDetail, CaseFilter, CaseListItem, CaseStatus, CollectionAction, CollectionCase, CollectionOverview,
-  Customer, CustomerDetail, CustomerSummary, DataSet, Invoice, Payment, PaymentListItem, PromiseItem, SearchResult,
+  Customer, CustomerDetail, CustomerSummary, DataSet, Invoice, Payment, PaymentListItem, PromiseItem, RegionSummary, SearchResult,
 } from "@/lib/domain/types";
-import type { AuditFilter, ImportResult, InvoiceImportRow, PaymentCandidate, PaymentImportRow, ReplyResult } from "./repository";
+import type { AuditReader, ImportResult, InvoiceImportRow, PaymentCandidate, PaymentImportRow, ReplyResult } from "./repository";
 
 const PRIORITY_RANK = { critical: 3, high: 2, medium: 1, low: 0 } as const;
 const OPEN_INVOICE = (invoice: Invoice) => invoice.status !== "cancelled" && invoice.amountOutstanding > 0;
@@ -27,6 +28,8 @@ export class CollectionsEngine {
   constructor(readonly data: DataSet, private readonly now: Date) {}
 
   today() { return isoDate(this.now); }
+  /** The same rules and business date over another working set (a region view of this one). */
+  withData(data: DataSet) { return new CollectionsEngine(data, this.now); }
   policy(companyId: string) { return this.data.policies.find((item) => item.companyId === companyId)!; }
 
   // ---------------------------------------------------------------- reads
@@ -191,9 +194,11 @@ export class CollectionsEngine {
       .map(({ score: _score, ...candidate }) => candidate);
   }
 
-  listAudit(companyId: string, filter: AuditFilter = {}): AuditEvent[] {
+  listAudit(companyId: string, filter: Parameters<AuditReader>[1] = {}): AuditEvent[] {
+    const entityIds = filter.entityIds && new Set(filter.entityIds);
     return this.data.auditEvents
       .filter((item) => item.companyId === companyId && (!filter.entityId || item.entityId === filter.entityId) && (!filter.entityType || item.entityType === filter.entityType))
+      .filter((item) => !entityIds || entityIds.has(item.entityId))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, filter.limit ?? 100);
   }
@@ -216,6 +221,42 @@ export class CollectionsEngine {
       results.push({ kind: "customer", id: customer.id, href: `/customers/${customer.id}`, title: customer.name, subtitle: `${customer.customerCode} · ${customer.region ?? ""}` });
     }
     return results;
+  }
+
+  /** The distinct customer regions, spelled as first seen. */
+  regions(companyId: string): string[] {
+    const names = new Map<string, string>();
+    for (const customer of this.data.customers) {
+      const key = regionKey(customer.region);
+      if (customer.companyId === companyId && key && !names.has(key)) names.set(key, customer.region!.trim());
+    }
+    return [...names.values()].sort((a, b) => a.localeCompare(b));
+  }
+
+  /** One row per region, customers without a region last: the figures of a per-region receivables sheet. */
+  regionSummary(companyId: string): RegionSummary[] {
+    const horizon = new Date(this.now); horizon.setUTCDate(horizon.getUTCDate() + 7);
+    const dueBy = isoDate(horizon);
+    const keys: Array<string | null> = this.regions(companyId);
+    if (this.data.customers.some((item) => item.companyId === companyId && !regionKey(item.region))) keys.push(null);
+    return keys.map((region) => {
+      const engine = this.withData(customerView(this.data, (customer) => (region === null ? !regionKey(customer.region) : inRegions(customer.region, [region]))).data);
+      const invoices = engine.indexById(engine.invoicesOf(companyId));
+      const due = engine.data.promises.filter((item) => item.companyId === companyId && item.status === "active" && item.promisedDate <= dueBy);
+      return {
+        ...engine.overview(companyId),
+        region,
+        customerCount: engine.data.customers.filter((item) => item.companyId === companyId).length,
+        promisesDueCount: due.length,
+        promisesDueAmount: sum(due.map((item) => item.promisedAmount ?? invoices.get(item.invoiceId)?.amountOutstanding ?? 0)),
+      };
+    });
+  }
+
+  /** Ids of every row in this working set that an audit event can point at. */
+  entityIds(): string[] {
+    const { invoices, payments, cases, actions, promises, communications } = this.data;
+    return [invoices, payments, cases, actions, promises, communications].flatMap((items: Array<{ id: string }>) => items.map((item) => item.id));
   }
 
   // ------------------------------------------------------------ mutations
@@ -252,7 +293,8 @@ export class CollectionsEngine {
     return action;
   }
 
-  importInvoices(companyId: string, rows: InvoiceImportRow[], userId?: string): ImportResult {
+  /** `regions` limits the import to customers in those regions; other rows are rejected. */
+  importInvoices(companyId: string, rows: InvoiceImportRow[], userId?: string, regions: readonly string[] | null = null): ImportResult {
     const result: ImportResult = { imported: 0, rejected: 0, reviewRequired: 0, errors: [] };
     rows.forEach((row, index) => {
       if (!row.invoice_number || !row.customer_name || !row.customer_email || !row.invoice_date || !row.due_date || !row.amount || !row.currency) {
@@ -265,6 +307,10 @@ export class CollectionsEngine {
         result.rejected += 1; result.errors.push({ row: index + 2, message: `Duplicate invoice ${row.invoice_number}` }); return;
       }
       let customer = this.data.customers.find((item) => item.companyId === companyId && ((row.customer_code && item.customerCode === row.customer_code) || item.email.toLowerCase() === row.customer_email.toLowerCase()));
+      const region = (customer ? customer.region : row.region)?.trim();
+      if (!inRegions(region, regions)) {
+        result.rejected += 1; result.errors.push({ row: index + 2, message: `${row.invoice_number} belongs to ${region ? `region ${region}` : "no region"}, outside your regions` }); return;
+      }
       if (!customer) {
         customer = {
           id: randomUUID(), companyId, customerCode: row.customer_code || `CUS-IMP-${this.data.customers.length + 1}`, name: row.customer_name,
@@ -497,4 +543,31 @@ export class CollectionsEngine {
 }
 
 function sum(values: number[]) { return values.reduce((total, value) => total + value, 0); }
+
+const VIEW_KEYS = ["customers", "invoices", "payments", "cases", "actions", "promises", "communications"] as const;
+
+/**
+ * The part of a working set that belongs to the customers `visible` accepts: those customers and their
+ * invoices, payments, cases, actions, promises and messages. Rows are shared with `data`, so the engine's
+ * changes to them land in `data`; `commit()` copies rows the engine added to the view into `data` too.
+ * Payments and messages that belong to no customer belong to no region, so a view leaves them out.
+ */
+export function customerView(data: DataSet, visible: (customer: Customer) => boolean): { data: DataSet; commit(): void } {
+  const customers = data.customers.filter(visible);
+  const ids = new Set(customers.map((item) => item.id));
+  const owned = <T extends { customerId?: string }>(items: T[]) => items.filter((item) => item.customerId !== undefined && ids.has(item.customerId));
+  const view: DataSet = {
+    ...data, customers, invoices: owned(data.invoices), payments: owned(data.payments), cases: owned(data.cases),
+    actions: owned(data.actions), promises: owned(data.promises), communications: owned(data.communications),
+  };
+  return {
+    data: view,
+    commit() {
+      for (const key of VIEW_KEYS) {
+        const known = new Set<object>(data[key]);
+        for (const item of view[key] as object[]) if (!known.has(item)) (data[key] as object[]).push(item);
+      }
+    },
+  };
+}
 

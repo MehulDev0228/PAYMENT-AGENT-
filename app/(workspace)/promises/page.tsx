@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowUpRight, Inbox } from "lucide-react";
+import { RegionFilter, regionParam } from "@/components/region-filter";
 import { EmptyState, PageHeader, StatusBadge, Tabs, formatDate } from "@/components/ui";
 import { getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
+import { withRegion } from "@/lib/data/repository";
 import { daysBetween, formatMoney } from "@/lib/domain/money";
 import type { PromiseStatus } from "@/lib/domain/types";
 
@@ -12,21 +14,26 @@ export const dynamic = "force-dynamic";
 
 const VIEWS: Array<{ key: PromiseStatus; label: string }> = [{ key: "active", label: "Active" }, { key: "missed", label: "Missed" }, { key: "fulfilled", label: "Kept" }, { key: "cancelled", label: "Superseded" }];
 
-export default async function PromisesPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
-  const { status } = await searchParams;
-  const { companyId } = await getPageContext();
-  const view = VIEWS.find((item) => item.key === status)?.key ?? "active";
-  const all = await repository.listPromiseItems(companyId);
+export default async function PromisesPage({ searchParams }: { searchParams: Promise<{ status?: string; region?: string }> }) {
+  const params = await searchParams;
+  const region = regionParam(params.region);
+  const context = await getPageContext();
+  const view = VIEWS.find((item) => item.key === params.status)?.key ?? "active";
+  const href = (status: PromiseStatus, nextRegion = region) => { const query = new URLSearchParams(); if (status !== "active") query.set("status", status); if (nextRegion) query.set("region", nextRegion); return `/promises${query.size ? `?${query}` : ""}`; };
+  const all = await repository.listPromiseItems(withRegion(context, region));
+  const regions = await repository.regions(context);
   const items = all.filter((item) => item.status === view);
-  const today = await repository.today(companyId);
+  const today = await repository.today(context);
   const total = items.reduce((sum, item) => sum + (item.promisedAmount ?? item.amountOutstanding), 0);
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Payment promises" title="What customers said they'd pay." muted="Checked against the bank, not taken on trust." />
+      <PageHeader eyebrow="Payment promises" title="What customers said they'd pay." muted="Checked against the bank, not taken on trust.">
+        <RegionFilter regions={regions} active={region} hrefFor={(next) => href(view, next)} />
+      </PageHeader>
       <div className="panel overflow-hidden">
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line px-3 pt-1">
-          <Tabs active={view} items={VIEWS.map((item) => ({ key: item.key, label: item.label, href: item.key === "active" ? "/promises" : `/promises?status=${item.key}`, count: all.filter((promise) => promise.status === item.key).length }))} />
+          <Tabs active={view} items={VIEWS.map((item) => ({ key: item.key, label: item.label, href: href(item.key), count: all.filter((promise) => promise.status === item.key).length }))} />
           <p className="tabular px-2 pb-3 text-[13px] text-muted">{formatMoney(total)} promised in this view</p>
         </div>
         {items.length === 0 ? <EmptyState icon={Inbox} title="No promises in this view" /> : (

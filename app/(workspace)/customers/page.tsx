@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowUpRight, Building2, Search } from "lucide-react";
+import { RegionFilter, regionParam } from "@/components/region-filter";
 import { EmptyState, PageHeader, Pagination } from "@/components/ui";
 import { getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
+import { withRegion } from "@/lib/data/repository";
 import { formatMoney } from "@/lib/domain/money";
 
 export const metadata: Metadata = { title: "Customers" };
@@ -11,27 +13,32 @@ export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 25;
 
-export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string }> }) {
+export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string; region?: string; page?: string }> }) {
   const params = await searchParams;
-  const { companyId } = await getPageContext();
+  const context = await getPageContext();
   const q = params.q?.trim() || undefined;
-  const all = await repository.listCustomers(companyId, q);
+  const region = regionParam(params.region);
+  const all = await repository.listCustomers(withRegion(context, region), q);
+  const regions = await repository.regions(context);
   const pageCount = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
   const page = Math.min(pageCount, Math.max(1, Number(params.page) || 1));
-  const href = (next: number) => { const query = new URLSearchParams(); if (q) query.set("q", q); if (next > 1) query.set("page", String(next)); return `/customers${query.size ? `?${query}` : ""}`; };
+  const href = (next: number, nextRegion = region) => { const query = new URLSearchParams(); if (q) query.set("q", q); if (nextRegion) query.set("region", nextRegion); if (next > 1) query.set("page", String(next)); return `/customers${query.size ? `?${query}` : ""}`; };
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Accounts" title="Who owes what." muted="Ranked by overdue exposure." />
+      <PageHeader eyebrow="Accounts" title="Who owes what." muted="Ranked by overdue exposure.">
+        <RegionFilter regions={regions} active={region} hrefFor={(next) => href(1, next)} />
+      </PageHeader>
       <div className="panel overflow-hidden">
         <form action="/customers" role="search" className="flex flex-wrap gap-2 border-b border-line p-4">
+          {region && <input type="hidden" name="region" value={region} />}
           <label className="relative flex-1 sm:max-w-sm">
             <span className="sr-only">Search customers</span>
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
             <input name="q" defaultValue={q} placeholder="Name, code or email" className="input pl-9" />
           </label>
           <button type="submit" className="btn-primary">Search</button>
-          {q && <Link href="/customers" className="btn-ghost">Clear</Link>}
+          {q && <Link href={region ? `/customers?region=${encodeURIComponent(region)}` : "/customers"} className="btn-ghost">Clear</Link>}
         </form>
         {all.length === 0 ? <EmptyState icon={Building2} title="No customers match" /> : (
           <div className="scrollbar overflow-x-auto">

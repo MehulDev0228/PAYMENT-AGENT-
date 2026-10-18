@@ -4,8 +4,8 @@
  *   npm run db:migrate                                  apply supabase/migrations/*.sql
  *   npm run db:create-company -- "Acme Pvt Ltd" [--currency INR] [--timezone Asia/Kolkata]
  *   npm run db:seed-demo                                load the synthetic demo dataset
- *   npm run db:add-user -- person@company.com --company <id> --role finance_manager --name "Asha Rao" [--password <pw>]
- *                                                       give a Supabase Auth user access to a company
+ *   npm run db:add-user -- person@company.com --company <id> --role finance_manager --name "Asha Rao" [--password <pw>] [--regions North,West|all]
+ *                                                       give a Supabase Auth user access to a company (optionally to some regions only)
  */
 import { randomBytes } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
@@ -13,6 +13,7 @@ import { isUserRole } from "@/lib/auth/context";
 import { applyMigrations, createCompany, seedDemo } from "@/lib/data/db-setup";
 import { createPgDatabase, type SqlDatabase } from "@/lib/data/sql";
 import { upsertWorkspaceUser } from "@/lib/data/users";
+import { parseRegions } from "@/lib/domain/regions";
 
 function option(args: string[], name: string): string | undefined {
   const index = args.indexOf(`--${name}`);
@@ -54,11 +55,14 @@ async function main() {
       const email = args.find((arg, index) => !arg.startsWith("--") && !args[index - 1]?.startsWith("--"));
       const companyId = option(args, "company");
       const role = option(args, "role") ?? "viewer";
-      if (!email || !companyId) throw new Error('Usage: npm run db:add-user -- person@company.com --company <id> [--role viewer|collection_manager|finance_manager|admin] [--name "Full name"] [--password <pw>]');
+      if (!email || !companyId) throw new Error('Usage: npm run db:add-user -- person@company.com --company <id> [--role viewer|collection_manager|finance_manager|admin] [--name "Full name"] [--password <pw>] [--regions North,West|all]');
       if (!isUserRole(role)) throw new Error(`Unknown role "${role}"`);
+      // Omitted: a new user gets every region and an existing user keeps theirs. "all" lifts a restriction.
+      const regionsOption = option(args, "regions");
+      const regions = regionsOption === undefined ? undefined : parseRegions(regionsOption);
       const auth = await authUserId(db, email, option(args, "password"));
-      const user = await upsertWorkspaceUser(db, { id: auth.id, companyId, role, email, name: option(args, "name") ?? email.split("@")[0]! });
-      console.log(`${user.email} is now ${user.role} of company ${user.companyId}.`);
+      const user = await upsertWorkspaceUser(db, { id: auth.id, companyId, role, email, name: option(args, "name") ?? email.split("@")[0]!, regions });
+      console.log(`${user.email} is now ${user.role} of company ${user.companyId}, ${user.regions ? `limited to ${user.regions.join(", ")}` : "with every region"}.`);
       if (auth.password) console.log(`Initial password (share it privately; it is not shown again): ${auth.password}`);
     } else {
       throw new Error("Unknown command. Use migrate, create-company, seed-demo or add-user.");

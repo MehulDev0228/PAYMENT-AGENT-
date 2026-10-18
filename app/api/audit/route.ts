@@ -9,7 +9,7 @@ export async function GET(request: Request) {
     const context = await getApiContext(request);
     const params = new URL(request.url).searchParams;
     const limit = Math.min(500, Math.max(1, Number(params.get("limit")) || 100));
-    return NextResponse.json(await repository.listAudit(context.companyId, { entityId: params.get("entityId") || undefined, limit }));
+    return NextResponse.json(await repository.listAudit(context, { entityId: params.get("entityId") || undefined, limit }));
   } catch (error) {
     return apiError(error, "Lookup failed", 500);
   }

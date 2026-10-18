@@ -3,6 +3,7 @@ import { ArrowRight, ArrowUpRight, Ban, Bot, Check, CheckCircle2, Mail, MessageS
 import { SiteNav } from "@/components/marketing/site-nav";
 import { LogoMark, cx, formatDate } from "@/components/ui";
 import { demoRepository } from "@/lib/data";
+import { companyScope } from "@/lib/data/repository";
 import { DEMO_COMPANY_ID } from "@/lib/data/seed";
 import { formatMoney } from "@/lib/domain/money";
 
@@ -25,9 +26,10 @@ const FAQ = [
 
 export default async function LandingPage() {
   const repository = demoRepository();
-  const overview = await repository.overview(DEMO_COMPANY_ID);
-  const approvals = (await repository.listActions(DEMO_COMPANY_ID, "awaiting_approval")).length;
-  const showcase = (await repository.listCases(DEMO_COMPANY_ID, { q: "INV-1042" })).find((item) => item.invoice.invoiceNumber === "INV-1042");
+  const demo = companyScope(DEMO_COMPANY_ID);
+  const overview = await repository.overview(demo);
+  const approvals = (await repository.listActions(demo, "awaiting_approval")).length;
+  const showcase = (await repository.listCases(demo, { q: "INV-1042" })).find((item) => item.invoice.invoiceNumber === "INV-1042");
   const maxAging = Math.max(1, ...overview.aging.map((item) => item.amount));
 
   return (

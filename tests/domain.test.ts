@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { matchPayment } from "@/lib/domain/payment-matching";
 import { applicablePolicyStep, defaultPolicy, priorityFor } from "@/lib/domain/policy";
 import { replyOutcome } from "@/lib/domain/reply-outcome";
+import { inRegions, parseRegions } from "@/lib/domain/regions";
 import { canTransition } from "@/lib/domain/state-machine";
 import type { Invoice } from "@/lib/domain/types";
 
@@ -79,5 +80,24 @@ describe("state machine", () => {
   });
   it("treats closed as terminal", () => {
     expect(canTransition("closed", "overdue")).toBe(false);
+  });
+});
+
+describe("regions", () => {
+  it("compare regions ignoring case and spacing", () => {
+    expect(inRegions(" north ", ["North", "West"])).toBe(true);
+    expect(inRegions("South", ["North", "West"])).toBe(false);
+  });
+
+  it("put a customer without a region only in the all-regions scope", () => {
+    expect(inRegions(undefined, null)).toBe(true);
+    expect(inRegions(undefined, ["North"])).toBe(false);
+    expect(inRegions("  ", ["North"])).toBe(false);
+  });
+
+  it("parse a region list from the command line", () => {
+    expect(parseRegions("North, West ,north")).toEqual(["North", "West"]);
+    expect(parseRegions("ALL")).toBeNull();
+    expect(() => parseRegions(" , ")).toThrow(/at least one region/);
   });
 });

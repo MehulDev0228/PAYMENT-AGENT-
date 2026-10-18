@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
-  const item = await repository.getCase((await getPageContext()).companyId, id);
+  const item = await repository.getCase(await getPageContext(), id);
   return { title: item ? `${item.invoice.invoiceNumber} · ${item.customer.name}` : "Case" };
 }
 
@@ -30,13 +30,12 @@ const KIND = {
 export default async function CasePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const context = await getPageContext();
-  const { companyId } = context;
-  const item = await repository.getCase(companyId, id);
+  const item = await repository.getCase(context, id);
   if (!item) notFound();
 
-  const audit = await repository.listAudit(companyId, { entityId: item.id });
+  const audit = await repository.listAudit(context, { entityId: item.id });
   const actionIds = new Set(item.actions.map((action) => action.id));
-  const actionAudit = (await repository.listAudit(companyId, { entityType: "collection_action", limit: 500 })).filter((event) => actionIds.has(event.entityId));
+  const actionAudit = (await repository.listAudit(context, { entityType: "collection_action", limit: 500 })).filter((event) => actionIds.has(event.entityId));
   const timeline: TimelineEvent[] = [
     { at: `${item.invoice.invoiceDate}T00:00:00Z`, title: "Invoice issued", detail: `${item.invoice.invoiceNumber} for ${formatMoney(item.invoice.amount, item.invoice.currency)}, due ${formatDate(item.invoice.dueDate)}`, kind: "system" as const },
     { at: `${item.invoice.dueDate}T00:00:00Z`, title: "Invoice fell due", kind: "system" as const },

@@ -1,7 +1,7 @@
 import { defaultPolicy } from "@/lib/domain/policy";
 import type { AuditEvent, Company, CollectionPolicyStep, DataSet } from "@/lib/domain/types";
 import { CollectionsEngine } from "./engine";
-import { createRepository, type AeraRepository, type AuditFilter } from "./repository";
+import { createRepository, type AeraRepository, type AuditReader } from "./repository";
 import type { SqlClient, SqlDatabase } from "./sql";
 
 /**
@@ -144,13 +144,14 @@ export function createPostgresRepository(db: SqlDatabase, options: PostgresRepos
     return load;
   };
 
-  const listAudit = async (companyId: string, filter: AuditFilter = {}): Promise<AuditEvent[]> => {
+  const listAudit: AuditReader = async (companyId, filter): Promise<AuditEvent[]> => {
     const [row] = await db.query<{ rows: Array<Record<string, unknown>> }>(
       `select coalesce(json_agg(t), '[]'::json) as rows from (
          select * from public.audit_events
          where company_id = $1 and ($2::text is null or entity_id = $2) and ($3::text is null or entity_type = $3)
+           and ($5::text[] is null or entity_id = any($5::text[]))
          order by created_at desc limit $4) t`,
-      [companyId, filter.entityId ?? null, filter.entityType ?? null, filter.limit ?? 100],
+      [companyId, filter.entityId ?? null, filter.entityType ?? null, filter.limit ?? 100, filter.entityIds ?? null],
     );
     return row.rows.map((item) => fromRow(AUDIT, item) as unknown as AuditEvent);
   };

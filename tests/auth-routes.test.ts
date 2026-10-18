@@ -8,6 +8,7 @@ const ACME = "11111111-1111-4111-8111-111111111111";
 const OTHER = "22222222-2222-4222-8222-222222222222";
 const VIEWER = "33333333-3333-4333-8333-333333333333";
 const MANAGER = "44444444-4444-4444-8444-444444444444";
+const NORTH_MANAGER = "55555555-5555-4555-8555-555555555555";
 const TOKEN = "automation-secret-token";
 
 const state = vi.hoisted(() => {
@@ -43,8 +44,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.session = null;
   state.profiles = new Map([
-    [VIEWER, { id: VIEWER, companyId: ACME, role: "viewer", name: "Vik Viewer", email: "vik@acme.example" }],
-    [MANAGER, { id: MANAGER, companyId: ACME, role: "finance_manager", name: "Asha Rao", email: "asha@acme.example" }],
+    [VIEWER, { id: VIEWER, companyId: ACME, role: "viewer", name: "Vik Viewer", email: "vik@acme.example", regions: null }],
+    [MANAGER, { id: MANAGER, companyId: ACME, role: "finance_manager", name: "Asha Rao", email: "asha@acme.example", regions: null }],
+    [NORTH_MANAGER, { id: NORTH_MANAGER, companyId: ACME, role: "collection_manager", name: "Nita North", email: "nita@acme.example", regions: ["North"] }],
   ]);
 });
 
@@ -59,7 +61,30 @@ describe("API routes", () => {
     state.session = { id: VIEWER };
     const response = await overview.GET(new Request("http://localhost/api/collections/overview", { headers: SPOOF }));
     expect(response.status).toBe(200);
-    expect(repo.overview).toHaveBeenCalledWith(ACME);
+    expect(repo.overview).toHaveBeenCalledWith({ companyId: ACME, regions: null });
+  });
+
+  it("scope a regional user to their regions, and a region filter only narrows it", async () => {
+    state.session = { id: NORTH_MANAGER };
+    const get = (query = "") => overview.GET(new Request(`http://localhost/api/collections/overview${query}`, { headers: SPOOF }));
+    expect((await get()).status).toBe(200);
+    expect(repo.overview).toHaveBeenLastCalledWith({ companyId: ACME, regions: ["North"] });
+    await get("?region=north");
+    expect(repo.overview).toHaveBeenLastCalledWith({ companyId: ACME, regions: ["north"] });
+    await get("?region=South");
+    expect(repo.overview).toHaveBeenLastCalledWith({ companyId: ACME, regions: [] });
+  });
+
+  it("filter an all-region user by ?region=", async () => {
+    state.session = { id: MANAGER };
+    await overview.GET(new Request("http://localhost/api/collections/overview?region=West"));
+    expect(repo.overview).toHaveBeenLastCalledWith({ companyId: ACME, regions: ["West"] });
+  });
+
+  it("pass the regional context to writes", async () => {
+    state.session = { id: NORTH_MANAGER };
+    await approve.POST(new Request("http://localhost/api/collections/actions/action-1/approve", { method: "POST" }), { params });
+    expect(repo.decideAction).toHaveBeenCalledWith(expect.objectContaining({ companyId: ACME, regions: ["North"] }), "action-1", "approved", NORTH_MANAGER, undefined);
   });
 
   it("keep viewers read-only even when they claim to be admin", async () => {
@@ -73,7 +98,7 @@ describe("API routes", () => {
     state.session = { id: MANAGER };
     const response = await approve.POST(new Request("http://localhost/api/collections/actions/action-1/approve", { method: "POST", headers: { "x-user-id": VIEWER } }), { params });
     expect(response.status).toBe(200);
-    expect(repo.decideAction).toHaveBeenCalledWith(ACME, "action-1", "approved", MANAGER, undefined);
+    expect(repo.decideAction).toHaveBeenCalledWith(expect.objectContaining({ companyId: ACME, regions: null }), "action-1", "approved", MANAGER, undefined);
   });
 
   it("do not accept the automation token for human decisions", async () => {
@@ -89,7 +114,7 @@ describe("automation routes", () => {
   it("run for the token's company", async () => {
     const response = await call({ authorization: `Bearer ${TOKEN}`, "x-company-id": ACME });
     expect(response.status).toBe(200);
-    expect(repo.runDailyMonitor).toHaveBeenCalledWith(ACME);
+    expect(repo.runDailyMonitor).toHaveBeenCalledWith(expect.objectContaining({ companyId: ACME, regions: null }));
   });
 
   it("refuse a wrong token or another company", async () => {
