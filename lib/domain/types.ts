@@ -141,6 +141,21 @@ export interface CommunicationMessage {
   processedAt?: string;
 }
 
+export type CallOutcome = "reached" | "no_answer" | "promised" | "disputed";
+
+/** A collector's note on a case: what happened on the call and when to try again. */
+export interface CaseFollowUp {
+  id: string;
+  companyId: string;
+  collectionCaseId: string;
+  customerId: string;
+  outcome: CallOutcome;
+  note: string;
+  nextFollowUpDate?: string;
+  createdBy: string;
+  createdAt: string;
+}
+
 export interface CollectionPolicyStep {
   id: string;
   daysOverdue: number;
@@ -171,6 +186,10 @@ export interface CaseListItem extends CollectionCase {
   invoice: Invoice;
   customer: Customer;
   activePromise?: PaymentPromise;
+  /** Name of the workspace user in assignedTo, when that user still exists. */
+  assigneeName?: string;
+  /** The most recent follow-up logged on the case. */
+  lastFollowUp?: CaseFollowUp;
 }
 
 export interface CaseDetail extends CaseListItem {
@@ -178,6 +197,7 @@ export interface CaseDetail extends CaseListItem {
   communications: CommunicationMessage[];
   promises: PaymentPromise[];
   payments: Payment[];
+  followUps: Array<CaseFollowUp & { createdByName?: string }>;
 }
 
 export interface AuditEvent {
@@ -198,6 +218,8 @@ export interface CaseFilter {
   priority?: CollectionCase["priority"];
   q?: string;
   customerId?: string;
+  /** A workspace user id, or null for unassigned cases. */
+  assignedTo?: string | null;
 }
 
 export interface PaymentListItem extends Payment {
@@ -234,6 +256,52 @@ export interface PromiseItem extends PaymentPromise {
   collectionCaseId?: string;
 }
 
+/** A workspace member who can own cases. */
+export interface WorkspaceUser {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+}
+
+export interface FollowUpDueItem {
+  followUp: CaseFollowUp;
+  case: CaseListItem;
+  /** Days past the planned follow-up date (0 = due today). */
+  daysLate: number;
+}
+
+export interface AgeingRow {
+  customerId: string;
+  customerCode: string;
+  customerName: string;
+  region?: string;
+  accountManager?: string;
+  notDue: number;
+  days1to30: number;
+  days31to60: number;
+  days61to90: number;
+  days90plus: number;
+  total: number;
+  openInvoices: number;
+}
+
+export interface AgeingInvoiceRow {
+  invoice: Invoice;
+  customer: Customer;
+  daysOverdue: number;
+  bucket: AgeingBucket;
+}
+
+export type AgeingBucket = "notDue" | "days1to30" | "days31to60" | "days61to90" | "days90plus";
+
+export interface AgeingReport {
+  asOf: string;
+  rows: AgeingRow[];
+  totals: Omit<AgeingRow, "customerId" | "customerCode" | "customerName" | "region" | "accountManager">;
+  invoices: AgeingInvoiceRow[];
+}
+
 export interface SearchResult {
   kind: "case" | "customer" | "invoice";
   id: string;
@@ -252,6 +320,7 @@ export interface DataSet {
   actions: CollectionAction[];
   promises: PaymentPromise[];
   communications: CommunicationMessage[];
+  followUps: CaseFollowUp[];
   policies: CollectionPolicy[];
   auditEvents: AuditEvent[];
 }

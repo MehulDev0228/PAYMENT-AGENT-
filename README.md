@@ -28,12 +28,13 @@ npm run build   # production build
 
 | Route | Purpose |
 | --- | --- |
-| `/dashboard` | Today's agenda (decisions, promises due, payments to match, missed promises), KPIs, priority cases, ageing, audit activity |
-| `/cases`, `/cases/[id]` | Queue with views, search, priority filter and pagination; case paper trail merging emails, payments and audit events |
+| `/dashboard` | Today's agenda (decisions, promises due, payments to match, missed promises), follow-up calls due today, KPIs, priority cases, ageing, audit activity |
+| `/cases`, `/cases/[id]` | Queue with views, search, priority and owner filters, "My cases" and pagination; case paper trail merging emails, calls, payments and audit events; owner picker and follow-up log |
 | `/approvals` | Human decision queue (escalations, disputes, payment-plan requests) with decision history |
 | `/promises` | Active / missed / kept / superseded promises |
 | `/payments` | Ambiguous-payment review with ranked candidates, and the full payment ledger |
 | `/customers`, `/customers/[id]` | Exposure by customer, invoices, payments and promise record |
+| `/ageing` | Receivables ageing by customer in 30-day bands (not due, 1–30, 31–60, 61–90, 90+) with totals |
 | `/imports` | CSV/XLSX invoice and payment import with row-level validation and duplicate rejection |
 | `/automation` | Run the daily monitor, simulated reminder dispatch, promise check and reply processing by hand |
 | `/ask` | Read-only questions answered by named repository tools, with tabular evidence |
@@ -41,6 +42,14 @@ npm run build   # production build
 | `/login` | Email and password sign-in (Supabase Auth) |
 
 Press `Ctrl K` / `⌘ K` anywhere in the workspace to search invoices, customers and pages.
+
+### The collector's day
+
+AERA replaces the daily outstanding sheet, so the habits around that sheet live in the workspace:
+
+- **Export to Excel.** Cases, customers and payments have **Export Excel** (`.xlsx`) and **CSV** buttons that download exactly the current filtered view (tab, search, priority, owner, match status). `/ageing` exports a two-sheet workbook: ageing by customer with a totals row, and every open invoice with its band. Amounts are numbers and dates are real Excel dates, so the file filters and sums like a hand-built sheet. CSV files are UTF-8 with a BOM, and text that Excel would run as a formula is prefixed with `'`. Everyone who can see the data can export it, viewers included. The endpoint is `GET /api/export/{cases|customers|payments|ageing}?format=xlsx|csv` with the page's own query parameters (`assignee=me` resolves to the signed-in user).
+- **Case owners.** Each case can be assigned to a workspace user (a `public.users` row; in dev mode the demo collectors). The owner shows on the case and in the queue. "My cases" and the owner filter (`?assignee=me`, `none` for unassigned, or a user id) narrow the queue and its export. Managers assign from the case page; every change is audited as `case_assigned` / `case_unassigned` with the previous and new owner.
+- **Follow-up log.** On a case, managers log a call: outcome (reached, no answer, promised to pay, disputed), a note and an optional next follow-up date (today or later). Entries are append-only, appear in the paper trail and are audited as `follow_up_logged`. A case's latest entry decides when it is due: the dashboard lists open cases whose next follow-up is today or already late, yours first. Logging a call never changes the case status or creates a payment promise; promises still come from customer replies and are verified against payments.
 
 ## Acceptance scenario
 
@@ -75,8 +84,8 @@ The invoice is settled, the promise is marked kept, the case closes and each ste
 ## Persisting to Supabase / PostgreSQL
 
 1. Put `DATABASE_URL` (Supabase: Project Settings → Database → connection string) and `AERA_DATA_ADAPTER=postgres` in `.env.local`.
-2. Apply the schema: `npm run db:migrate` (safe to re-run; a database where `001_initial.sql` was pasted into the SQL editor is detected).
-3. Create your company and its default policy ladder: `npm run db:create-company -- "Your Company Pvt Ltd" --timezone Asia/Kolkata`. Or load the demo dataset with `npm run db:seed-demo`.
+2. Apply the schema: `npm run db:migrate` (safe to re-run; a database where `001_initial.sql` was pasted into the SQL editor is detected). `003_collector_workflow.sql` adds the `case_follow_ups` table and clears `collection_cases.assigned_to` values that are not a user of the case's company (older demo seeds stored free-text names there).
+3. Create your company and its default policy ladder: `npm run db:create-company -- "Your Company Pvt Ltd" --timezone Asia/Kolkata`. Or load the demo dataset with `npm run db:seed-demo` (its cases start unassigned and without follow-ups, because case owners must be real workspace users).
 4. Set up sign-in (next section). For a quick local look without it, set `AERA_AUTH_MODE=dev` and `AERA_DEV_COMPANY_ID` to the printed id; this only works outside production.
 5. `npm run dev`. Imports, approvals, payment matches, replies and automation runs are now saved, with every change in `audit_events`.
 
@@ -94,8 +103,8 @@ Identity comes only from the Supabase session: the app verifies the session JWT,
 
 | Role | Access |
 | --- | --- |
-| `admin`, `finance_manager`, `collection_manager` | Everything in their company, including approve/reject, imports, payment matches and automation jobs |
-| `viewer` | Read-only: pages and read APIs work, every mutation answers 403 and its controls are hidden or disabled |
+| `admin`, `finance_manager`, `collection_manager` | Everything in their company, including approve/reject, imports, payment matches, automation jobs, case assignment and the follow-up log |
+| `viewer` | Read-only: pages, read APIs and exports work, every mutation answers 403 and its controls are hidden or disabled. A viewer can still own cases |
 
 Signed-out page requests redirect to `/login`, signed-out API calls get 401, and a signed-in account without a `public.users` row is told it has no access. For n8n, set `AERA_INTERNAL_API_TOKEN` and `AERA_AUTOMATION_COMPANY_ID` (see `n8n/README.md`).
 
@@ -106,3 +115,4 @@ Signed-out page requests redirect to `/login`, signed-out API calls get 401, and
 - Editable policy ladder and per-customer policy overrides.
 - Sending email directly from the app. Dispatch from the console is simulated and logged only.
 - Partial-payment allocation across several invoices from one bank entry.
+- Bulk assignment and auto-assignment rules (by region or account manager); reminders for follow-ups due (today they are listed on the dashboard only); editing or deleting a logged follow-up.

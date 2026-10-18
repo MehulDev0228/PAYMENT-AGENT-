@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { FileUp, HandCoins } from "lucide-react";
+import { ExportLinks } from "@/components/export-links";
 import { PaymentReview } from "@/components/payment-review";
 import { EmptyState, PageHeader, Pagination, StatusBadge, Tabs, formatDate } from "@/components/ui";
 import { canManage, getPageContext } from "@/lib/auth";
@@ -29,7 +30,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Reconciliation" title="Every rupee, accounted for." muted="Ambiguous bank entries are never applied on a guess." actions={<Link href="/imports" className="btn-outline"><FileUp size={15} /> Import bank file</Link>} />
+      <PageHeader eyebrow="Reconciliation" title="Every rupee, accounted for." muted="Ambiguous bank entries are never applied on a guess." actions={<><ExportLinks report="payments" query={{ status: view === "all" ? undefined : view }} /><Link href="/imports" className="btn-outline"><FileUp size={15} /> Import bank file</Link></>} />
 
       {review.length > 0 && (
         <section aria-label="Payments needing review" className="space-y-4">

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowUpRight, Banknote, CalendarClock, FileWarning, WalletCards } from "lucide-react";
 import { ActivityFeed } from "@/components/activity-feed";
 import { CasesTable } from "@/components/cases-table";
+import { FollowUpsDue } from "@/components/follow-ups-due";
 import { PageHeader, SectionTitle, StatTile, TextLink, formatDate } from "@/components/ui";
 import { getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
@@ -13,7 +14,7 @@ export const metadata: Metadata = { title: "Overview" };
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const { companyId } = await getPageContext();
+  const { companyId, userId } = await getPageContext();
   const today = await repository.today(companyId);
   const overview = await repository.overview(companyId);
   const priorityCases = (await repository.listCases(companyId, { statuses: OPEN_CASE_STATUSES })).slice(0, 8);
@@ -21,6 +22,8 @@ export default async function DashboardPage() {
   const horizon = new Date(`${today}T00:00:00Z`); horizon.setUTCDate(horizon.getUTCDate() + 3);
   const promisesDue = (await repository.listPromiseItems(companyId, "active")).filter((item) => item.promisedDate <= horizon.toISOString().slice(0, 10));
   const review = await repository.listPayments(companyId, "payment_match_review_required");
+  const followUpsDue = await repository.followUpsDue(companyId);
+  const lateFollowUps = followUpsDue.filter((item) => item.daysLate > 0).length;
   const maxAging = Math.max(1, ...overview.aging.map((item) => item.amount));
   const overdueShare = overview.totalOutstanding ? Math.round((overview.totalOverdue / overview.totalOutstanding) * 100) : 0;
 
@@ -60,10 +63,17 @@ export default async function DashboardPage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <article className="panel min-w-0 overflow-hidden">
-          <SectionTitle title="Priority cases" helper="Ranked by priority, age and exposure" action={<TextLink href="/cases">All cases <ArrowUpRight size={14} /></TextLink>} />
-          <CasesTable cases={priorityCases} compact />
-        </article>
+        <div className="min-w-0 space-y-6">
+          <article className="panel min-w-0 overflow-hidden">
+            <SectionTitle title="Follow-ups due today" helper={followUpsDue.length ? `${followUpsDue.length} calls planned${lateFollowUps ? ` · ${lateFollowUps} already late` : ""}` : "Planned from the follow-up log on each case"}
+              action={<TextLink href="/cases?assignee=me">My cases <ArrowUpRight size={14} /></TextLink>} />
+            <FollowUpsDue items={followUpsDue} currentUserId={userId} />
+          </article>
+          <article className="panel min-w-0 overflow-hidden">
+            <SectionTitle title="Priority cases" helper="Ranked by priority, age and exposure" action={<TextLink href="/cases">All cases <ArrowUpRight size={14} /></TextLink>} />
+            <CasesTable cases={priorityCases} compact />
+          </article>
+        </div>
         <div className="space-y-6">
           <article className="panel p-5">
             <div className="flex items-start justify-between">

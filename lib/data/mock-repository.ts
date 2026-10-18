@@ -12,7 +12,7 @@ export function createMockRepository(): AeraRepository {
 }
 
 // Bump when the repository shape changes so dev-server hot reloads do not keep a stale instance.
-const INSTANCE_VERSION = 4;
+const INSTANCE_VERSION = 5;
 declare global { var __aeraMockRepository: { version: number; repository: AeraRepository } | undefined; }
 
 export function sharedMockRepository(): AeraRepository {

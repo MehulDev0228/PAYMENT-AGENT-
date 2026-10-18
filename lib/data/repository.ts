@@ -1,4 +1,4 @@
-import type { ApprovalItem, AuditEvent, CaseDetail, CaseFilter, CaseListItem, CollectionAction, CollectionOverview, CollectionPolicy, Customer, CustomerDetail, CustomerSummary, Invoice, Payment, PaymentListItem, PaymentPromise, PromiseItem, SearchResult } from "@/lib/domain/types";
+import type { AgeingReport, ApprovalItem, AuditEvent, CallOutcome, CaseDetail, CaseFilter, CaseFollowUp, CaseListItem, CollectionAction, CollectionCase, CollectionOverview, CollectionPolicy, Customer, CustomerDetail, CustomerSummary, FollowUpDueItem, Invoice, Payment, PaymentListItem, PaymentPromise, PromiseItem, SearchResult, WorkspaceUser } from "@/lib/domain/types";
 import type { ReplyClassificationInput } from "@/lib/domain/reply-outcome";
 import type { CollectionsEngine } from "./engine";
 
@@ -48,6 +48,13 @@ export interface PaymentCandidate {
   reason: string;
 }
 
+export interface FollowUpInput {
+  outcome: CallOutcome;
+  note?: string;
+  /** YYYY-MM-DD, today or later. Omit when no further call is planned. */
+  nextFollowUpDate?: string;
+}
+
 export interface Paged<T> {
   items: T[];
   total: number;
@@ -85,6 +92,12 @@ export interface AeraRepository {
   search(companyId: string, q: string): Promise<SearchResult[]>;
   summary(companyId: string): Promise<Record<string, unknown>>;
   recentPayments(companyId: string): Promise<Payment[]>;
+  /** Workspace members (public.users) who can own cases. */
+  listUsers(companyId: string): Promise<WorkspaceUser[]>;
+  followUpsDue(companyId: string): Promise<FollowUpDueItem[]>;
+  ageingReport(companyId: string): Promise<AgeingReport>;
+  assignCase(companyId: string, caseId: string, assigneeId: string | null, actorId: string): Promise<CollectionCase>;
+  logFollowUp(companyId: string, caseId: string, input: FollowUpInput, actorId: string): Promise<CaseFollowUp>;
 }
 
 export interface AuditFilter { entityId?: string; entityType?: AuditEvent["entityType"]; limit?: number }
@@ -117,6 +130,9 @@ export function createRepository(run: EngineRunner, listAudit: AeraRepository["l
     search: (c, q) => run(c, "read", (e) => e.search(c, q)),
     summary: (c) => run(c, "read", (e) => e.summary(c)),
     recentPayments: (c) => run(c, "read", (e) => e.recentPayments(c)),
+    listUsers: (c) => run(c, "read", (e) => e.listUsers(c)),
+    followUpsDue: (c) => run(c, "read", (e) => e.followUpsDue(c)),
+    ageingReport: (c) => run(c, "read", (e) => e.ageingReport(c)),
     listAudit,
     decideAction: (c, id, decision, userId, note) => run(c, "write", (e) => e.decideAction(c, id, decision, userId, note)),
     markActionExecuted: (c, id, input) => run(c, "write", (e) => e.markActionExecuted(c, id, input)),
@@ -126,5 +142,7 @@ export function createRepository(run: EngineRunner, listAudit: AeraRepository["l
     runDailyMonitor: (c) => run(c, "write", (e) => e.runDailyMonitor(c)),
     checkPromises: (c) => run(c, "write", (e) => e.checkPromises(c)),
     recordReply: (c, input, classification) => run(c, "write", (e) => e.recordReply(c, input, classification)),
+    assignCase: (c, caseId, assigneeId, actorId) => run(c, "write", (e) => e.assignCase(c, caseId, assigneeId, actorId)),
+    logFollowUp: (c, caseId, input, actorId) => run(c, "write", (e) => e.logFollowUp(c, caseId, input, actorId)),
   };
 }
