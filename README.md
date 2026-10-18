@@ -118,7 +118,7 @@ Flags show next to the invoice on `/customers/[id]`. Template: `public/templates
 ## Persisting to Supabase / PostgreSQL
 
 1. Put `DATABASE_URL` (Supabase: Project Settings → Database → connection string) and `AERA_DATA_ADAPTER=postgres` in `.env.local`.
-2. Apply the schema: `npm run db:migrate` (safe to re-run; a database where `001_initial.sql` was pasted into the SQL editor is detected). `003_collector_workflow.sql` adds the `case_follow_ups` table and clears `collection_cases.assigned_to` values that are not a user of the case's company (older demo seeds stored free-text names there).
+2. Apply the schema: `npm run db:migrate` (safe to re-run; a database where `001_initial.sql` was pasted into the SQL editor is detected). `004_collector_workflow.sql` adds the `case_follow_ups` table and clears `collection_cases.assigned_to` values that are not a user of the case's company (older demo seeds stored free-text names there).
 3. Create your company and its default policy ladder: `npm run db:create-company -- "Your Company Pvt Ltd" --timezone Asia/Kolkata`. Or load the demo dataset with `npm run db:seed-demo` (its cases start unassigned and without follow-ups, because case owners must be real workspace users).
 4. Set up sign-in (next section). For a quick local look without it, set `AERA_AUTH_MODE=dev` and `AERA_DEV_COMPANY_ID` to the printed id; this only works outside production.
 5. `npm run dev`. Imports, approvals, payment matches, replies and automation runs are now saved, with every change in `audit_events`.
