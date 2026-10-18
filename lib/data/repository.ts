@@ -1,6 +1,6 @@
 import { AuthError } from "@/lib/auth/context";
 import { inRegions } from "@/lib/domain/regions";
-import type { AgeingReport, ApprovalItem, AuditEvent, CallOutcome, CaseDetail, CaseFilter, CaseFollowUp, CaseListItem, CollectionAction, CollectionCase, CollectionOverview, CollectionPolicy, Customer, CustomerDetail, CustomerSummary, FollowUpDueItem, Invoice, Payment, PaymentListItem, PaymentPromise, PromiseItem, RegionSummary, SearchResult, WorkspaceUser } from "@/lib/domain/types";
+import type { AgeingReport, ApprovalItem, AuditEvent, CallOutcome, CaseDetail, CaseFilter, CaseFollowUp, CaseListItem, CollectionAction, CollectionCase, CollectionOverview, CollectionPolicy, Customer, CustomerDetail, CustomerSummary, FollowUpDueItem, Invoice, Payment, PaymentListItem, PaymentPromise, PromiseItem, ReconciliationStatus, RegionSummary, SearchResult, WorkspaceUser } from "@/lib/domain/types";
 import type { ReplyClassificationInput } from "@/lib/domain/reply-outcome";
 import { customerView, type CollectionsEngine } from "./engine";
 
@@ -16,6 +16,42 @@ export interface InvoiceImportRow {
   customer_phone?: string;
   region?: string;
   account_manager?: string;
+  /** Balance still owed according to the ERP (optional "outstanding" / "balance" column). */
+  outstanding?: number;
+  /** Spreadsheet row number for messages; defaults to the row's position plus the header. */
+  row?: number;
+}
+
+export interface InvoiceSyncOptions {
+  /** The file is the complete open-invoice ledger: open invoices it does not list are flagged for review. */
+  fullLedger?: boolean;
+  /** Rows that failed validation before reaching the engine. Their invoice numbers still count as present in the file. */
+  invalidRows?: Array<{ row: number; invoiceNumber?: string; message: string }>;
+  /** Set from the caller's scope: limits the sync to customers in these regions (null = every region). */
+  regions?: readonly string[] | null;
+}
+
+export type InvoiceSyncOutcome = "new" | "updated" | "unchanged" | "flagged" | "rejected";
+
+export interface FieldChange { field: string; before: string | number | null; after: string | number | null }
+
+export interface InvoiceSyncRow {
+  /** Spreadsheet row; absent for invoices flagged because the full ledger no longer lists them. */
+  row?: number;
+  invoiceNumber: string;
+  outcome: InvoiceSyncOutcome;
+  changes: FieldChange[];
+  reconciliation?: ReconciliationStatus;
+  message?: string;
+}
+
+/** The ledger sync result. `imported` counts new plus updated rows and `reviewRequired` counts flagged ones. */
+export interface InvoiceSyncResult extends ImportResult {
+  dryRun: boolean;
+  fullLedger: boolean;
+  counts: Record<InvoiceSyncOutcome, number>;
+  /** Every row that is not unchanged, in file order, followed by invoices missing from a full ledger. */
+  rows: InvoiceSyncRow[];
 }
 
 export interface PaymentImportRow {
@@ -107,8 +143,11 @@ export interface AeraRepository {
   listApprovals(scope: DataScope, status?: string): Promise<ApprovalItem[]>;
   decideAction(scope: DataScope, actionId: string, decision: "approved" | "rejected", userId: string, note?: string): Promise<CollectionAction>;
   markActionExecuted(scope: DataScope, actionId: string, input: { subject: string; body: string; externalMessageId?: string }): Promise<CollectionAction>;
-  /** A regional scope may import invoices of its own regions only; other rows are rejected. */
-  importInvoices(scope: DataScope, rows: InvoiceImportRow[], userId?: string): Promise<ImportResult>;
+  /**
+   * Syncs the ledger: new invoices are created, known ones updated, mismatches flagged. `dryRun` returns the same
+   * result without saving anything. A regional scope may sync invoices of its own regions only; other rows are rejected.
+   */
+  importInvoices(scope: DataScope, rows: InvoiceImportRow[], userId?: string, options?: Omit<InvoiceSyncOptions, "regions"> & { dryRun?: boolean }): Promise<InvoiceSyncResult>;
   /** Bank files span every region, so payment imports need a scope with every region. */
   importPayments(scope: DataScope, rows: PaymentImportRow[]): Promise<ImportResult>;
   /** Payments not yet tied to a customer belong to no region: only a scope with every region sees them. */
@@ -189,7 +228,9 @@ export function createRepository(runCompany: EngineRunner, readAudit: AuditReade
     decideAction: (s, id, decision, userId, note) => run(s, "write", (e) => e.decideAction(s.companyId, id, decision, userId, note)),
     markActionExecuted: (s, id, input) => run(s, "write", (e) => e.markActionExecuted(s.companyId, id, input)),
     // Imports run on the whole company so duplicate checks and customer matching see every region.
-    importInvoices: (s, rows, userId) => runCompany(s.companyId, "write", (e) => e.importInvoices(s.companyId, rows, userId, s.regions)),
+    importInvoices: (s, rows, userId, { dryRun, ...options } = {}) => dryRun
+      ? runCompany(s.companyId, "read", (e) => e.previewInvoices(s.companyId, rows, userId, { ...options, regions: s.regions }))
+      : runCompany(s.companyId, "write", (e) => e.importInvoices(s.companyId, rows, userId, { ...options, regions: s.regions })),
     importPayments: async (s, rows) => {
       if (s.regions !== null) throw new AuthError(403, "Bank files cover every region. Ask a user with access to all regions to import payments.");
       return runCompany(s.companyId, "write", (e) => e.importPayments(s.companyId, rows));

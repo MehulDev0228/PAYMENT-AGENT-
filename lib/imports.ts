@@ -1,4 +1,6 @@
 import readXlsxFile from "read-excel-file/node";
+import { z } from "zod";
+import type { InvoiceImportRow, InvoiceSyncOptions } from "@/lib/data/repository";
 
 export async function parseWorkbook(file: File): Promise<Record<string, unknown>[]> {
   if (file.name.toLowerCase().endsWith(".csv")) return csvToObjects(await file.text());
@@ -38,4 +40,44 @@ export function asNumber(value: unknown): number {
   if (typeof value === "number") return value;
   const parsed = Number(String(value).replace(/[₹,$\s]/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+const OUTSTANDING_HEADERS = ["outstanding", "outstanding_amount", "amount_outstanding", "balance", "balance_due", "closing_balance", "pending_amount"];
+const OPTIONAL_TEXT = ["customer_code", "customer_phone", "region", "account_manager"] as const;
+
+const InvoiceRow = z.object({
+  invoice_number: z.string().min(1), customer_name: z.string().min(1), customer_email: z.string().email(),
+  invoice_date: z.string().min(8), due_date: z.string().min(8), amount: z.number().positive(), currency: z.string().length(3),
+  customer_code: z.string().optional(), customer_phone: z.string().optional(), region: z.string().optional(), account_manager: z.string().optional(),
+  outstanding: z.number().nonnegative().optional(),
+});
+
+/**
+ * Validates an invoice ledger export row by row. A bad row is reported against its spreadsheet row number
+ * instead of failing the whole file, and keeps its invoice number so a full-ledger sync knows it was listed.
+ */
+export function parseInvoiceRows(raw: Record<string, unknown>[]): { rows: InvoiceImportRow[]; invalidRows: NonNullable<InvoiceSyncOptions["invalidRows"]> } {
+  const rows: InvoiceImportRow[] = [];
+  const invalidRows: NonNullable<InvoiceSyncOptions["invalidRows"]> = [];
+  raw.forEach((item, index) => {
+    const row = index + 2;
+    const normalized = normalizeHeaders(item);
+    const text = (value: unknown) => (value === undefined || value === null || String(value).trim() === "" ? undefined : String(value).trim());
+    const balanceHeader = OUTSTANDING_HEADERS.find((header) => text(normalized[header]) !== undefined);
+    const balance = balanceHeader ? Number(String(normalized[balanceHeader]).replace(/[₹,$\s]/g, "")) : undefined;
+    const invoiceNumber = text(normalized.invoice_number);
+    const parsed = InvoiceRow.safeParse({
+      invoice_number: invoiceNumber ?? "", customer_name: text(normalized.customer_name) ?? "", customer_email: text(normalized.customer_email) ?? "",
+      invoice_date: text(normalized.invoice_date) ?? "", due_date: text(normalized.due_date) ?? "",
+      amount: asNumber(normalized.amount), currency: String(normalized.currency ?? "").trim().toUpperCase(),
+      ...Object.fromEntries(OPTIONAL_TEXT.map((field) => [field, text(normalized[field])])),
+      outstanding: balance,
+    });
+    if (parsed.success) rows.push({ ...parsed.data, row });
+    else {
+      const issue = parsed.error.issues[0];
+      invalidRows.push({ row, invoiceNumber, message: `${issue.path.join(".") || "row"}: ${issue.message}` });
+    }
+  });
+  return { rows, invalidRows };
 }

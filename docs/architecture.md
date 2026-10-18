@@ -42,7 +42,8 @@ Dev mode (`AERA_AUTH_MODE=dev`, the default when no Supabase project is configur
 2. **Reminder dispatch**: n8n asks `/api/automation/reminders/:id/generate` for a draft, sends it via Gmail, then reports back to `/api/collections/actions/:id/executed`.
 3. **Reply processing**: n8n posts inbound mail to `/api/automation/replies/process`. The reply is classified, `replyOutcome` decides, and the repository records a promise, raises an approval or simply logs. Calls are idempotent on `externalMessageId`.
 4. **Payment import / review**: matched payments are applied immediately. A fully settled invoice fulfils its promise and closes its case. Ambiguous entries wait in `/payments` for a reviewer.
-5. **Promise monitor**: promises that have fallen due are marked kept or missed. A missed promise escalates for review.
+5. **Invoice ledger sync**: `/api/invoices/import` creates new invoice numbers and updates known ones (amount, due date, customer contact fields). AERA's matched payments are never reduced. An ERP balance that disagrees, an amount below what is paid, or (full-ledger mode) an open invoice the file no longer lists is recorded on the invoice as `reconciliation_status` instead of being overwritten. `mode=preview` runs the same engine call on a cloned working set (`CollectionsEngine.previewInvoices`) so the preview matches the commit.
+6. **Promise monitor**: promises that have fallen due are marked kept or missed. A missed promise escalates for review.
 
 ## Local and production modes
 

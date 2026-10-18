@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 const SAFEGUARDS = [
   ["Tenant scoped", "Every row is written only to the authenticated company, and only to your regions."],
-  ["Duplicate aware", "Repeated invoice numbers and payment references are rejected per row."],
+  ["Sync, never overwrite", "Re-imported invoices are refreshed with a before/after audit. ERP balances that disagree with AERA are flagged for reconciliation, not copied over."],
   ["Never guessed", "A payment that could fit more than one invoice waits for a person."],
 ];
 
@@ -18,7 +18,7 @@ export default async function ImportsPage() {
   const regional = context.regions !== null;
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Data operations" title="Bring your ledger in." muted="Validated row by row before anything changes." />
+      <PageHeader eyebrow="Data operations" title="Bring your ledger in." muted="Preview every row before anything changes." />
       <div className="grid gap-4 xl:grid-cols-2">
         <ImportPanel kind="invoices" n="01" readOnly={readOnly} />
         <ImportPanel kind="payments" n="02" readOnly={readOnly || regional} readOnlyReason={readOnly ? undefined : "Bank files cover every region. A user with access to all regions imports them."} />

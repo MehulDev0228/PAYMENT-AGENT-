@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { PGlite, type PGliteInterface } from "@electric-sql/pglite";
 import readXlsxFile from "read-excel-file/node";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
@@ -11,6 +13,7 @@ import type { SqlClient, SqlDatabase } from "@/lib/data/sql";
 import { upsertWorkspaceUser } from "@/lib/data/users";
 import type { RegionSummary } from "@/lib/domain/types";
 import { buildReport, toCsv, toXlsx } from "@/lib/exports";
+import { parseInvoiceRows, parseWorkbook } from "@/lib/imports";
 
 const C = companyScope(DEMO_COMPANY_ID);
 const OTHER_COMPANY = "00000000-0000-0000-0000-0000000000aa";
@@ -95,6 +98,140 @@ describe.each(adapters)("%s repository", (_name, make, people) => {
       const item = await caseFor("INV-1042");
       expect(item.status).toBe("payment_promised");
       expect(item.invoice.amountOutstanding).toBe(80_000);
+    });
+  });
+
+  describe("invoice ledger sync", () => {
+    const find = async (invoiceNumber: string) => {
+      const hit = (await repo.search(C, invoiceNumber)).find((item) => item.title === invoiceNumber)!;
+      return (await repo.getInvoice(C, hit.id))!;
+    };
+    const ledgerRow = async (invoiceNumber: string, overrides: Partial<InvoiceImportRow> = {}): Promise<InvoiceImportRow> => {
+      const invoice = await find(invoiceNumber);
+      const customer = (await repo.getCustomer(C, invoice.customerId))!;
+      return {
+        invoice_number: invoice.invoiceNumber, customer_name: customer.name, customer_email: customer.email, invoice_date: invoice.invoiceDate, due_date: invoice.dueDate,
+        amount: invoice.amount, currency: invoice.currency, customer_code: customer.customerCode, customer_phone: customer.phone, region: customer.region, account_manager: customer.accountManager,
+        ...overrides,
+      };
+    };
+    const openInvoiceCount = async () => (await repo.listCustomers(C)).reduce((total, item) => total + item.openInvoices, 0);
+
+    it("previews an update without saving, then applies it with a before/after audit", async () => {
+      const row = await ledgerRow("INV-1042", { amount: 90_000, due_date: "2026-10-05", region: "North", account_manager: "Kabir Shah" });
+      const preview = await repo.importInvoices(C, [row], USER, { dryRun: true });
+      expect(preview).toMatchObject({ dryRun: true, counts: { new: 0, updated: 1, unchanged: 0, flagged: 0, rejected: 0 } });
+      expect(preview.rows[0].changes).toEqual(expect.arrayContaining([{ field: "amount", before: 84_000, after: 90_000 }, { field: "dueDate", before: "2026-09-20", after: "2026-10-05" }]));
+      expect(await find("INV-1042")).toMatchObject({ amount: 84_000, dueDate: "2026-09-20" });
+
+      const result = await repo.importInvoices(C, [row], USER);
+      expect(result).toMatchObject({ dryRun: false, counts: preview.counts, imported: 1, rejected: 0 });
+      const invoice = await find("INV-1042");
+      expect(invoice).toMatchObject({ amount: 90_000, amountPaid: 0, amountOutstanding: 90_000, dueDate: "2026-10-05" });
+      expect(await repo.getCustomer(C, invoice.customerId)).toMatchObject({ region: "North", accountManager: "Kabir Shah" });
+      const [synced] = await repo.listAudit(C, { entityId: invoice.id, entityType: "invoice" });
+      expect(synced).toMatchObject({ eventType: "invoice_synced", actorType: "human", actorId: USER });
+      expect(synced.dataSnapshot.changes).toEqual(expect.arrayContaining([{ field: "amount", before: 84_000, after: 90_000 }, { field: "amountOutstanding", before: 84_000, after: 90_000 }]));
+      const [customerEvent] = await repo.listAudit(C, { entityId: invoice.customerId, entityType: "customer" });
+      expect(customerEvent.dataSnapshot.changes).toEqual(expect.arrayContaining([{ field: "customer.accountManager", before: expect.any(String), after: "Kabir Shah" }]));
+    });
+
+    it("re-imports the downloadable template unchanged", async () => {
+      const csv = await readFile(path.join(process.cwd(), "public", "templates", "invoice-import.csv"), "utf8");
+      const { rows, invalidRows } = parseInvoiceRows(await parseWorkbook(new File([csv], "invoice-import.csv")));
+      expect(invalidRows).toEqual([]);
+      expect((await repo.importInvoices(C, rows, USER, { dryRun: true })).counts).toEqual({ new: 0, updated: 0, unchanged: 1, flagged: 0, rejected: 0 });
+    });
+
+    it("reports an identical row as unchanged and writes no invoice event", async () => {
+      const result = await repo.importInvoices(C, [await ledgerRow("INV-1042")], USER);
+      expect(result.counts).toMatchObject({ unchanged: 1, updated: 0 });
+      expect(result.rows).toHaveLength(0);
+      expect((await repo.listAudit(C, { entityId: (await find("INV-1042")).id, entityType: "invoice" })).some((event) => event.eventType === "invoice_synced")).toBe(false);
+    });
+
+    it("never reduces the amount below payments AERA has matched", async () => {
+      await repo.importPayments(C, [{ payment_reference: "UTR-SYNC-PART", invoice_number: "INV-1042", amount: 50_000, payment_date: "2026-09-29" }]);
+      const below = await repo.importInvoices(C, [await ledgerRow("INV-1042", { amount: 40_000 })], USER);
+      expect(below.rows[0]).toMatchObject({ outcome: "flagged", reconciliation: "amount_below_paid" });
+      expect(await find("INV-1042")).toMatchObject({ amount: 84_000, amountPaid: 50_000, amountOutstanding: 34_000, reconciliationStatus: "amount_below_paid" });
+
+      const creditNote = await repo.importInvoices(C, [await ledgerRow("INV-1042", { amount: 60_000 })], USER);
+      expect(creditNote.rows[0].outcome).toBe("updated");
+      expect(await find("INV-1042")).toMatchObject({ amount: 60_000, amountPaid: 50_000, amountOutstanding: 10_000, status: "partially_paid" });
+      expect((await find("INV-1042")).reconciliationStatus).toBeUndefined();
+    });
+
+    it("closes the case when a credit note brings the amount down to what was paid", async () => {
+      await repo.importPayments(C, [{ payment_reference: "UTR-SYNC-CN", invoice_number: "INV-1042", amount: 80_000, payment_date: "2026-09-29" }]);
+      await repo.importInvoices(C, [await ledgerRow("INV-1042", { amount: 80_000 })], USER);
+      expect(await find("INV-1042")).toMatchObject({ amountOutstanding: 0, status: "paid" });
+      expect((await caseFor("INV-1042")).status).toBe("closed");
+    });
+
+    it("records a differing ERP balance for reconciliation instead of overwriting it", async () => {
+      const mismatch = await repo.importInvoices(C, [await ledgerRow("INV-1042", { outstanding: 70_000 })], USER);
+      expect(mismatch).toMatchObject({ reviewRequired: 1, counts: { flagged: 1 } });
+      expect(mismatch.rows[0]).toMatchObject({ reconciliation: "balance_mismatch", message: expect.stringContaining("lower") });
+      expect(await find("INV-1042")).toMatchObject({ amountOutstanding: 84_000, erpOutstanding: 70_000, reconciliationStatus: "balance_mismatch" });
+
+      // A file without the balance column keeps the open question; a matching balance resolves it.
+      expect((await repo.importInvoices(C, [await ledgerRow("INV-1042")], USER)).counts.flagged).toBe(1);
+      const resolved = await repo.importInvoices(C, [await ledgerRow("INV-1042", { outstanding: 84_000 })], USER);
+      expect(resolved.rows[0].changes).toEqual(expect.arrayContaining([{ field: "reconciliationStatus", before: "balance_mismatch", after: null }]));
+      expect((await find("INV-1042")).reconciliationStatus).toBeUndefined();
+      expect((await find("INV-1042")).erpOutstanding).toBeUndefined();
+    });
+
+    it("flags open invoices missing from a full ledger without closing them, and pauses their reminders", async () => {
+      const open = await openInvoiceCount();
+      const missing = await find("INV-1044");
+      expect(missing.amountOutstanding).toBeGreaterThan(0);
+      const partial = await repo.importInvoices(C, [await ledgerRow("INV-1042")], USER);
+      expect(partial.counts.flagged).toBe(0);
+
+      const result = await repo.importInvoices(C, [await ledgerRow("INV-1042")], USER, { fullLedger: true, invalidRows: [{ row: 3, invoiceNumber: "INV-1043", message: "customer_email: Invalid email" }] });
+      expect(result.counts).toMatchObject({ unchanged: 1, rejected: 1 });
+      const listed = [await find("INV-1042"), await find("INV-1043")].filter((invoice) => invoice.amountOutstanding > 0).length;
+      expect(result.counts.flagged).toBe(open - listed);
+      expect(result.rows.find((row) => row.invoiceNumber === "INV-1043")?.outcome).toBe("rejected");
+      expect(result.rows.find((row) => row.invoiceNumber === "INV-1044")).toMatchObject({ outcome: "flagged", reconciliation: "missing_from_ledger" });
+      expect(await find("INV-1044")).toMatchObject({ status: missing.status, amountOutstanding: missing.amountOutstanding, reconciliationStatus: "missing_from_ledger" });
+      expect((await openInvoiceCount())).toBe(open);
+      expect((await repo.listAudit(C, { entityId: missing.id }))[0].eventType).toBe("invoice_missing_from_ledger");
+
+      const kept = await find("INV-1042");
+      expect((await (await make()).runDailyMonitor(C)).created).toBeGreaterThan(0);
+      const created = (await repo.runDailyMonitor(C)).actions;
+      expect(created.every((action) => action.invoiceId === kept.id)).toBe(true);
+
+      // Settling it in AERA explains why the ERP no longer lists it.
+      await repo.importPayments(C, [{ payment_reference: "UTR-SYNC-MISSING", invoice_number: "INV-1044", amount: missing.amountOutstanding, payment_date: "2026-09-29" }]);
+      expect((await find("INV-1044")).reconciliationStatus).toBeUndefined();
+    });
+
+    it("opens a new invoice at the ERP balance and creates its customer once", async () => {
+      const base = { customer_name: "Zephyr Traders", customer_email: "ap@zephyr.example", invoice_date: "2026-09-01", due_date: "2026-10-30", amount: 50_000, currency: "INR", customer_code: "CUS-ZEPHYR" };
+      const result = await repo.importInvoices(C, [{ ...base, invoice_number: "INV-NEW-1", outstanding: 20_000 }, { ...base, invoice_number: "INV-NEW-2" }], USER);
+      expect(result.counts).toMatchObject({ new: 2, rejected: 0 });
+      expect(await find("INV-NEW-1")).toMatchObject({ amount: 50_000, amountPaid: 30_000, amountOutstanding: 20_000, status: "partially_paid" });
+      expect(await find("INV-NEW-2")).toMatchObject({ amountPaid: 0, amountOutstanding: 50_000, status: "pending" });
+      expect((await repo.listCustomers(C, "CUS-ZEPHYR"))).toHaveLength(1);
+    });
+
+    it("rejects conflicting rows one by one", async () => {
+      const row = await ledgerRow("INV-1042");
+      const result = await repo.importInvoices(C, [
+        row,
+        { ...row, due_date: "2026-12-01" },
+        { ...(await ledgerRow("INV-1043")), currency: "USD" },
+        { ...(await ledgerRow("INV-1045")), customer_code: "CUS-9999" },
+        { ...(await ledgerRow("INV-1046")), outstanding: 99_999_999 },
+      ], USER);
+      expect(result.counts).toMatchObject({ unchanged: 1, rejected: 4 });
+      expect(result.errors.map((error) => error.row)).toEqual([3, 4, 5, 6]);
+      expect(result.errors[0].message).toMatch(/more than once/);
+      expect((await find("INV-1042")).dueDate).toBe("2026-09-20");
     });
   });
 
@@ -308,6 +445,29 @@ describe.each(adapters)("%s repository", (_name, make, people) => {
       expect(run.actions.every((action) => actions.has(action.id))).toBe(true);
     });
 
+    it("limits a regional user's ledger sync to their regions", async () => {
+      const cases = await repo.listCases(C);
+      const { invoice, customer } = cases.find((item) => item.customer.region === "North")!;
+      const southCase = cases.find((item) => item.customer.region === "South")!;
+      const row = invoiceRow({ invoice_number: invoice.invoiceNumber, customer_name: customer.name, customer_email: customer.email, customer_code: customer.customerCode, invoice_date: invoice.invoiceDate, due_date: invoice.dueDate, amount: invoice.amount, currency: invoice.currency });
+
+      // A full ledger of North only flags North invoices missing from it, never another region's.
+      const preview = await repo.importInvoices(NORTH, [row], USER, { dryRun: true, fullLedger: true });
+      const flagged = new Set(preview.rows.filter((item) => item.reconciliation === "missing_from_ledger").map((item) => item.invoiceNumber));
+      expect(flagged.size).toBeGreaterThan(0);
+      expect(flagged.has(southCase.invoice.invoiceNumber)).toBe(false);
+      const northNumbers = new Set((await repo.ageingReport(NORTH)).invoices.map((item) => item.invoice.invoiceNumber));
+      expect([...flagged].every((number) => northNumbers.has(number))).toBe(true);
+
+      // Neither updating another region's invoice nor moving a customer out of the region is allowed.
+      const result = await repo.importInvoices(NORTH, [
+        { ...row, region: "South" },
+        invoiceRow({ invoice_number: southCase.invoice.invoiceNumber, customer_name: southCase.customer.name, customer_email: southCase.customer.email, amount: southCase.invoice.amount, currency: southCase.invoice.currency }),
+      ], USER);
+      expect(result.counts).toMatchObject({ rejected: 2, updated: 0, new: 0 });
+      expect((await repo.getCustomer(C, customer.id))!.region).toBe("North");
+    });
+
     it("keeps owners, follow-ups and exports inside a regional user's regions", async () => {
       const cases = await repo.listCases(C);
       const southCase = cases.find((item) => item.customer.region === "South")!;
@@ -502,6 +662,24 @@ describe("postgres adapter", () => {
     const rows = await db.query<{ outcome: string; note: string; next: string; created_by: string }>(
       "select outcome, note, next_follow_up_date::text as next, created_by from public.case_follow_ups where collection_case_id = $1", [target.id]);
     expect(rows).toEqual([{ outcome: "no_answer", note: "Line busy", next: "2026-09-28", created_by: USER }]);
+  });
+
+  it("persists reconciliation flags, and a preview writes nothing", async () => {
+    const { db, repo } = await freshPostgres();
+    const { invoice, customer } = (await repo.listCases(C, { q: "INV-1042" })).find((c) => c.invoice.invoiceNumber === "INV-1042")!;
+    const row = { invoice_number: "INV-1042", customer_name: customer.name, customer_email: customer.email, invoice_date: invoice.invoiceDate, due_date: invoice.dueDate, amount: 84_000, currency: "INR", outstanding: 70_000 };
+    const auditCount = () => db.query("select count(*)::int as n from public.audit_events");
+    const before = await auditCount();
+    expect((await repo.importInvoices(C, [row], USER, { dryRun: true, fullLedger: true })).counts.flagged).toBeGreaterThan(1);
+    expect(await auditCount()).toEqual(before);
+    expect(await db.query("select count(*)::int as n from public.invoices where reconciliation_status is not null")).toEqual([{ n: 0 }]);
+
+    await repo.importInvoices(C, [row], USER);
+    const [stored] = await db.query<{ reconciliation_status: string; erp_outstanding: string }>("select reconciliation_status, erp_outstanding::text from public.invoices where company_id = $1 and invoice_number = 'INV-1042'", [C.companyId]);
+    expect(stored.reconciliation_status).toBe("balance_mismatch");
+    expect(Number(stored.erp_outstanding)).toBe(70_000);
+    const restarted = createPostgresRepository(db, { now: () => DEMO_NOW, readCacheMs: 0 });
+    expect(await restarted.getInvoice(C, invoice.id)).toMatchObject({ amountOutstanding: 84_000, erpOutstanding: 70_000, reconciliationStatus: "balance_mismatch" });
   });
 
   it("serialises concurrent writers so a payment is applied once", async () => {
