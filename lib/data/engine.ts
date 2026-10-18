@@ -7,14 +7,15 @@ import { canTransition } from "@/lib/domain/state-machine";
 import { OPEN_CASE_STATUSES } from "@/lib/domain/case-views";
 import type {
   ApprovalItem, AuditEvent, CaseDetail, CaseFilter, CaseListItem, CaseStatus, CollectionAction, CollectionCase, CollectionOverview,
-  Customer, CustomerDetail, CustomerSummary, DataSet, Invoice, Payment, PaymentListItem, PromiseItem, SearchResult,
+  Customer, CustomerDetail, CustomerSummary, DataSet, Invoice, Payment, PaymentListItem, PromiseItem, ReconciliationStatus, SearchResult,
 } from "@/lib/domain/types";
-import type { AuditFilter, ImportResult, InvoiceImportRow, PaymentCandidate, PaymentImportRow, ReplyResult } from "./repository";
+import type { AuditFilter, FieldChange, ImportResult, InvoiceImportRow, InvoiceSyncOptions, InvoiceSyncResult, InvoiceSyncRow, PaymentCandidate, PaymentImportRow, ReplyResult } from "./repository";
 
 const PRIORITY_RANK = { critical: 3, high: 2, medium: 1, low: 0 } as const;
 const OPEN_INVOICE = (invoice: Invoice) => invoice.status !== "cancelled" && invoice.amountOutstanding > 0;
 
 type Actor = { type: AuditEvent["actorType"]; id?: string };
+type CustomerContactField = "name" | "email" | "phone" | "region" | "accountManager";
 const AERA: Actor = { type: "aera" };
 const SYSTEM: Actor = { type: "system" };
 
@@ -252,36 +253,73 @@ export class CollectionsEngine {
     return action;
   }
 
-  importInvoices(companyId: string, rows: InvoiceImportRow[], userId?: string): ImportResult {
-    const result: ImportResult = { imported: 0, rejected: 0, reviewRequired: 0, errors: [] };
+  /**
+   * Daily ledger sync. New invoice numbers are created; known ones take the file's amount, due date and
+   * customer contact details. AERA's own payment record is never overwritten: an ERP balance that differs,
+   * an amount below what is already paid, or (in full-ledger mode) an open invoice the file no longer lists
+   * is flagged for reconciliation instead. Every change is audited with before and after values.
+   */
+  importInvoices(companyId: string, rows: InvoiceImportRow[], userId?: string, options: InvoiceSyncOptions = {}): InvoiceSyncResult {
+    const actor: Actor = { type: "human", id: userId };
+    const importId = randomUUID();
+    const counts: InvoiceSyncResult["counts"] = { new: 0, updated: 0, unchanged: 0, flagged: 0, rejected: 0 };
+    const report: InvoiceSyncRow[] = [];
+    const record = (entry: InvoiceSyncRow) => { counts[entry.outcome] += 1; if (entry.outcome !== "unchanged") report.push(entry); };
+    const byNumber = new Map(this.invoicesOf(companyId).map((item) => [item.invoiceNumber, item]));
+    const inFile = new Set<string>();
+    const seen = new Set<string>();
+
+    for (const invalid of options.invalidRows ?? []) {
+      if (invalid.invoiceNumber) inFile.add(invalid.invoiceNumber);
+      record({ row: invalid.row, invoiceNumber: invalid.invoiceNumber ?? "", outcome: "rejected", changes: [], message: invalid.message });
+    }
     rows.forEach((row, index) => {
-      if (!row.invoice_number || !row.customer_name || !row.customer_email || !row.invoice_date || !row.due_date || !row.amount || !row.currency) {
-        result.rejected += 1; result.errors.push({ row: index + 2, message: "Missing required invoice field" }); return;
-      }
-      if (row.due_date < row.invoice_date) {
-        result.rejected += 1; result.errors.push({ row: index + 2, message: `Due date precedes invoice date for ${row.invoice_number}` }); return;
-      }
-      if (this.data.invoices.some((item) => item.companyId === companyId && item.invoiceNumber === row.invoice_number)) {
-        result.rejected += 1; result.errors.push({ row: index + 2, message: `Duplicate invoice ${row.invoice_number}` }); return;
-      }
-      let customer = this.data.customers.find((item) => item.companyId === companyId && ((row.customer_code && item.customerCode === row.customer_code) || item.email.toLowerCase() === row.customer_email.toLowerCase()));
-      if (!customer) {
-        customer = {
-          id: randomUUID(), companyId, customerCode: row.customer_code || `CUS-IMP-${this.data.customers.length + 1}`, name: row.customer_name,
-          email: row.customer_email, phone: row.customer_phone, region: row.region, accountManager: row.account_manager, status: "active", createdAt: new Date().toISOString(),
-        } satisfies Customer;
-        this.data.customers.push(customer);
-      }
-      const amount = Number(row.amount);
-      this.data.invoices.push({
-        id: randomUUID(), companyId, customerId: customer.id, invoiceNumber: row.invoice_number, invoiceDate: row.invoice_date, dueDate: row.due_date,
-        amount, currency: row.currency, amountPaid: 0, amountOutstanding: amount, status: new Date(row.due_date) < this.now ? "overdue" : "pending",
-        source: "file_import", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-      });
-      result.imported += 1;
+      const rowNumber = row.row ?? index + 2;
+      const reject = (message: string) => record({ row: rowNumber, invoiceNumber: row.invoice_number ?? "", outcome: "rejected", changes: [], message });
+      if (row.invoice_number) inFile.add(row.invoice_number);
+      if (!row.invoice_number || !row.customer_name || !row.customer_email || !row.invoice_date || !row.due_date || !row.amount || !row.currency) return reject("Missing required invoice field");
+      if (row.due_date < row.invoice_date) return reject(`Due date precedes invoice date for ${row.invoice_number}`);
+      if (seen.has(row.invoice_number)) return reject(`${row.invoice_number} appears more than once in this file`);
+      seen.add(row.invoice_number);
+      const amount = round2(Number(row.amount));
+      const outstanding = row.outstanding === undefined ? undefined : round2(Number(row.outstanding));
+      if (outstanding !== undefined && !(outstanding >= 0 && outstanding <= amount)) return reject(`Outstanding ${outstanding} for ${row.invoice_number} must be between 0 and the invoice amount`);
+      const existing = byNumber.get(row.invoice_number);
+      const outcome = existing
+        ? this.syncInvoice(companyId, existing, row, amount, outstanding, actor, importId)
+        : this.createInvoice(companyId, row, amount, outstanding, actor, importId);
+      if (typeof outcome === "string") return reject(outcome);
+      record({ row: rowNumber, ...outcome });
     });
-    this.audit(companyId, { type: "human", id: userId }, "invoices_imported", "import", randomUUID(), `${result.imported} invoices imported, ${result.rejected} rejected`, { ...result, errors: result.errors.slice(0, 20) });
+
+    if (options.fullLedger) {
+      for (const invoice of this.invoicesOf(companyId)) {
+        if (inFile.has(invoice.invoiceNumber) || !OPEN_INVOICE(invoice)) continue;
+        const changes: FieldChange[] = [];
+        if (invoice.reconciliationStatus !== "missing_from_ledger") {
+          changes.push({ field: "reconciliationStatus", before: invoice.reconciliationStatus ?? null, after: "missing_from_ledger" });
+          invoice.reconciliationStatus = "missing_from_ledger";
+          invoice.reconciliationNote = `Not in the ledger imported on ${this.today()}; likely paid or cancelled in the ERP. Reminders are paused until it is reconciled.`;
+          invoice.updatedAt = new Date().toISOString();
+          this.audit(companyId, actor, "invoice_missing_from_ledger", "invoice", invoice.id, invoice.reconciliationNote, { importId, invoiceNumber: invoice.invoiceNumber, amountOutstanding: invoice.amountOutstanding, changes });
+        }
+        record({ invoiceNumber: invoice.invoiceNumber, outcome: "flagged", changes, reconciliation: "missing_from_ledger", message: "Open in AERA but missing from the ledger: likely paid or cancelled in the ERP" });
+      }
+    }
+
+    report.sort((a, b) => (a.row ?? Number.MAX_SAFE_INTEGER) - (b.row ?? Number.MAX_SAFE_INTEGER));
+    const errors = report.filter((item) => item.outcome === "rejected").map((item) => ({ row: item.row ?? 0, message: item.message ?? "Rejected" }));
+    const result: InvoiceSyncResult = { imported: counts.new + counts.updated, rejected: counts.rejected, reviewRequired: counts.flagged, errors, dryRun: false, fullLedger: Boolean(options.fullLedger), counts, rows: report };
+    this.audit(companyId, actor, "invoices_imported", "import", importId,
+      `Ledger sync: ${counts.new} new, ${counts.updated} updated, ${counts.unchanged} unchanged, ${counts.flagged} flagged, ${counts.rejected} rejected`,
+      { counts, fullLedger: result.fullLedger, errors: errors.slice(0, 20) });
     return result;
+  }
+
+  /** The ledger sync on a throwaway copy of the data: exactly what importInvoices would do, with nothing saved. */
+  previewInvoices(companyId: string, rows: InvoiceImportRow[], userId?: string, options: InvoiceSyncOptions = {}): InvoiceSyncResult {
+    const result = new CollectionsEngine(structuredClone(this.data), this.now).importInvoices(companyId, rows, userId, options);
+    return { ...result, dryRun: true };
   }
 
   importPayments(companyId: string, rows: PaymentImportRow[]): ImportResult {
@@ -328,6 +366,8 @@ export class CollectionsEngine {
     const created: CollectionAction[] = [];
     for (const invoice of candidates) {
       if (this.data.promises.some((item) => item.invoiceId === invoice.id && item.status === "active")) continue;
+      // The ERP no longer lists it as open: never chase a customer for what may already be paid or cancelled.
+      if (invoice.reconciliationStatus === "missing_from_ledger") continue;
       const overdue = daysBetween(invoice.dueDate, this.now);
       let collectionCase = this.data.cases.find((item) => item.invoiceId === invoice.id);
       if (collectionCase?.status === "closed") continue;
@@ -430,6 +470,142 @@ export class CollectionsEngine {
     return { generatedAt: new Date().toISOString(), businessDate: this.today(), overview, topCustomers, awaitingApproval: this.listActions(companyId, "awaiting_approval").length, paymentsInReview: this.listPayments(companyId, "payment_match_review_required").length, note: "Factual operational summary only; no financial decisions were made." };
   }
 
+  // ---------------------------------------------------- ledger sync helpers
+
+  private createInvoice(companyId: string, row: InvoiceImportRow, amount: number, outstanding: number | undefined, actor: Actor, importId: string): Omit<InvoiceSyncRow, "row"> | string {
+    let customer = this.findImportCustomer(companyId, row);
+    let changes: FieldChange[] = [];
+    if (customer) {
+      const update = this.customerUpdate(companyId, customer, row);
+      if (typeof update === "string") return update;
+      changes = this.applyCustomerUpdate(companyId, customer, update, row.invoice_number, actor, importId);
+    } else {
+      customer = {
+        id: randomUUID(), companyId, customerCode: row.customer_code || `CUS-IMP-${this.data.customers.length + 1}`, name: row.customer_name,
+        email: row.customer_email, phone: row.customer_phone, region: row.region, accountManager: row.account_manager, status: "active", createdAt: new Date().toISOString(),
+      } satisfies Customer;
+      this.data.customers.push(customer);
+    }
+    // A first sync takes the ERP balance as the opening position: whatever is already settled there was paid before AERA.
+    const amountOutstanding = outstanding ?? amount;
+    const at = new Date().toISOString();
+    const invoice: Invoice = {
+      id: randomUUID(), companyId, customerId: customer.id, invoiceNumber: row.invoice_number, invoiceDate: row.invoice_date, dueDate: row.due_date,
+      amount, currency: row.currency, amountPaid: round2(amount - amountOutstanding), amountOutstanding, status: "pending",
+      source: "file_import", createdAt: at, updatedAt: at,
+    };
+    invoice.status = this.derivedStatus(invoice);
+    this.data.invoices.push(invoice);
+    const message = invoice.amountPaid > 0 ? `Opening balance ${formatMoney(amountOutstanding, invoice.currency)}; ${formatMoney(invoice.amountPaid, invoice.currency)} already settled in the ERP` : undefined;
+    this.audit(companyId, actor, "invoice_imported", "invoice", invoice.id, message ?? `${invoice.invoiceNumber} imported from the ledger`,
+      { importId, invoiceNumber: invoice.invoiceNumber, amount, amountPaid: invoice.amountPaid, amountOutstanding, dueDate: invoice.dueDate });
+    return { invoiceNumber: invoice.invoiceNumber, outcome: "new", changes, ...(message ? { message } : {}) };
+  }
+
+  private syncInvoice(companyId: string, invoice: Invoice, row: InvoiceImportRow, amount: number, outstanding: number | undefined, actor: Actor, importId: string): Omit<InvoiceSyncRow, "row"> | string {
+    if (invoice.status === "cancelled") return `${invoice.invoiceNumber} is cancelled in AERA`;
+    if (row.currency !== invoice.currency) return `${invoice.invoiceNumber} is in ${invoice.currency} in AERA, not ${row.currency}`;
+    const customer = this.data.customers.find((item) => item.id === invoice.customerId)!;
+    if (row.customer_code && row.customer_code !== customer.customerCode) return `${invoice.invoiceNumber} belongs to customer ${customer.customerCode}, not ${row.customer_code}`;
+    const customerChanges = this.customerUpdate(companyId, customer, row);
+    if (typeof customerChanges === "string") return customerChanges;
+
+    const changes: FieldChange[] = [];
+    const target = invoice as unknown as Record<string, unknown>;
+    const set = <K extends keyof Invoice>(field: K, after: Invoice[K] | undefined) => {
+      const before = invoice[field];
+      if (before === after) return;
+      changes.push({ field, before: (before ?? null) as FieldChange["before"], after: (after ?? null) as FieldChange["after"] });
+      if (after === undefined) delete target[field]; else target[field] = after;
+    };
+    const money = (value: number) => formatMoney(value, invoice.currency);
+    const wasOpen = invoice.amountOutstanding > 0;
+    let flag: ReconciliationStatus | undefined;
+    let note: string | undefined;
+
+    set("dueDate", row.due_date);
+    if (amount !== invoice.amount) {
+      // Payments AERA matched stay applied: an amount below them is a question for a person, not an overwrite.
+      const paid = Math.max(invoice.amountPaid, this.matchedPaid(invoice));
+      if (amount < paid) {
+        flag = "amount_below_paid";
+        note = `ERP amount ${money(amount)} is below the ${money(paid)} AERA has recorded as paid; the amount stays at ${money(invoice.amount)}`;
+      } else {
+        set("amount", amount); set("amountPaid", paid); set("amountOutstanding", round2(amount - paid));
+      }
+    }
+    if (changes.length) set("status", this.derivedStatus(invoice));
+
+    if (!flag && outstanding !== undefined) {
+      const difference = round2(outstanding - invoice.amountOutstanding);
+      if (difference !== 0) {
+        flag = "balance_mismatch";
+        note = `ERP balance ${money(outstanding)} vs ${money(invoice.amountOutstanding)} in AERA (ERP ${difference > 0 ? "higher" : "lower"} by ${money(Math.abs(difference))})`;
+      }
+    } else if (!flag && invoice.reconciliationStatus === "balance_mismatch") {
+      // This file carries no balance column, so an earlier mismatch is still unresolved.
+      flag = "balance_mismatch"; note = invoice.reconciliationNote;
+    }
+    // The ERP figure is kept only while it is in question; an agreeing balance needs no second copy.
+    set("erpOutstanding", flag === "balance_mismatch" ? outstanding ?? invoice.erpOutstanding : undefined);
+    set("reconciliationStatus", flag);
+    if (note) invoice.reconciliationNote = note; else delete invoice.reconciliationNote;
+
+    let message = note;
+    if (changes.length) {
+      invoice.updatedAt = new Date().toISOString();
+      this.audit(companyId, actor, "invoice_synced", "invoice", invoice.id, `Ledger sync changed ${changes.map((item) => item.field).join(", ")}`,
+        { importId, invoiceNumber: invoice.invoiceNumber, changes, ...(note ? { reconciliationNote: note } : {}) });
+      if (wasOpen && invoice.amountOutstanding === 0) this.settleInvoice(companyId, invoice, actor, `Ledger amount for ${invoice.invoiceNumber} now equals the amount paid`, { importId });
+      if (!wasOpen && invoice.amountOutstanding > 0) message ??= `Balance reopened at ${money(invoice.amountOutstanding)}; a closed case stays closed`;
+    }
+    const applied = this.applyCustomerUpdate(companyId, customer, customerChanges, invoice.invoiceNumber, actor, importId);
+    const outcome = flag ? "flagged" : changes.length || applied.length ? "updated" : "unchanged";
+    return { invoiceNumber: invoice.invoiceNumber, outcome, changes: [...changes, ...applied], ...(flag ? { reconciliation: flag } : {}), ...(message ? { message } : {}) };
+  }
+
+  /** The customer an imported row belongs to: by customer code first, then by email. */
+  private findImportCustomer(companyId: string, row: InvoiceImportRow) {
+    const customers = this.data.customers.filter((item) => item.companyId === companyId);
+    return (row.customer_code ? customers.find((item) => item.customerCode === row.customer_code) : undefined)
+      ?? customers.find((item) => item.email.toLowerCase() === row.customer_email.toLowerCase());
+  }
+
+  /** Contact fields the row would change on the customer (blank cells keep the current value), or why it cannot. */
+  private customerUpdate(companyId: string, customer: Customer, row: InvoiceImportRow): FieldChange[] | string {
+    const email = row.customer_email.trim();
+    const sameEmail = email.toLowerCase() === customer.email.toLowerCase();
+    if (!sameEmail) {
+      const owner = this.data.customers.find((item) => item.companyId === companyId && item.id !== customer.id && item.email.toLowerCase() === email.toLowerCase());
+      if (owner) return `Email ${email} already belongs to customer ${owner.customerCode}`;
+    }
+    const next: Array<[CustomerContactField, string | undefined]> = [
+      ["name", row.customer_name], ["email", sameEmail ? undefined : email], ["phone", row.customer_phone], ["region", row.region], ["accountManager", row.account_manager],
+    ];
+    return next
+      .filter(([field, value]) => value && value !== customer[field])
+      .map(([field, value]) => ({ field: `customer.${field}`, before: customer[field] ?? null, after: value! }));
+  }
+
+  private applyCustomerUpdate(companyId: string, customer: Customer, changes: FieldChange[], invoiceNumber: string, actor: Actor, importId: string): FieldChange[] {
+    if (!changes.length) return changes;
+    for (const change of changes) customer[change.field.slice("customer.".length) as CustomerContactField] = String(change.after);
+    this.audit(companyId, actor, "customer_updated", "customer", customer.id, `Ledger sync changed ${changes.map((item) => item.field.slice("customer.".length)).join(", ")} via ${invoiceNumber}`,
+      { importId, invoiceNumber, changes });
+    return changes;
+  }
+
+  private matchedPaid(invoice: Invoice) {
+    return round2(sum(this.data.payments.filter((item) => item.invoiceId === invoice.id && item.matchStatus === "matched").map((item) => item.amount)));
+  }
+
+  private derivedStatus(invoice: Invoice): Invoice["status"] {
+    if (invoice.status === "cancelled") return "cancelled";
+    if (invoice.amountOutstanding <= 0) return "paid";
+    if (invoice.amountPaid > 0) return "partially_paid";
+    return new Date(invoice.dueDate) < this.now ? "overdue" : "pending";
+  }
+
   // -------------------------------------------------------------- helpers
 
   private applyPayment(companyId: string, invoice: Invoice, payment: Payment, actor: Actor) {
@@ -439,16 +615,28 @@ export class CollectionsEngine {
     invoice.updatedAt = new Date().toISOString();
     const collectionCase = this.data.cases.find((item) => item.invoiceId === invoice.id);
     if (invoice.amountOutstanding === 0) {
-      for (const promise of this.data.promises.filter((item) => item.invoiceId === invoice.id && item.status === "active")) {
-        promise.status = "fulfilled"; promise.updatedAt = invoice.updatedAt;
-        this.audit(companyId, actor, "promise_fulfilled", "payment_promise", promise.id, `Matched payment ${payment.paymentReference} settled ${invoice.invoiceNumber}`, { paymentId: payment.id });
-      }
-      if (collectionCase) this.closeCase(companyId, collectionCase, actor, `Invoice settled by ${payment.paymentReference}`);
+      this.settleInvoice(companyId, invoice, actor, `Matched payment ${payment.paymentReference} settled ${invoice.invoiceNumber}`, { paymentId: payment.id });
     } else if (collectionCase) {
       collectionCase.nextAction = `Partial payment received; ${formatMoney(invoice.amountOutstanding, invoice.currency)} still outstanding`;
       collectionCase.updatedAt = invoice.updatedAt;
       this.audit(companyId, actor, "partial_payment_applied", "collection_case", collectionCase.id, collectionCase.nextAction, { paymentId: payment.id, amount: payment.amount });
     }
+  }
+
+  /** Fulfils open promises and closes the case of an invoice that has nothing left outstanding. */
+  private settleInvoice(companyId: string, invoice: Invoice, actor: Actor, reason: string, snapshot: Record<string, unknown>) {
+    for (const promise of this.data.promises.filter((item) => item.invoiceId === invoice.id && item.status === "active")) {
+      promise.status = "fulfilled"; promise.updatedAt = invoice.updatedAt;
+      this.audit(companyId, actor, "promise_fulfilled", "payment_promise", promise.id, reason, snapshot);
+    }
+    // Being settled in AERA explains why the ERP's open ledger no longer lists it.
+    if (invoice.reconciliationStatus === "missing_from_ledger") {
+      delete invoice.reconciliationStatus; delete invoice.reconciliationNote;
+      this.audit(companyId, actor, "invoice_reconciled", "invoice", invoice.id, `${invoice.invoiceNumber} is settled, which explains its absence from the ledger`,
+        { ...snapshot, changes: [{ field: "reconciliationStatus", before: "missing_from_ledger", after: null }] });
+    }
+    const collectionCase = this.data.cases.find((item) => item.invoiceId === invoice.id);
+    if (collectionCase) this.closeCase(companyId, collectionCase, actor, reason);
   }
 
   private closeCase(companyId: string, collectionCase: CollectionCase, actor: Actor, reason: string) {
@@ -497,4 +685,5 @@ export class CollectionsEngine {
 }
 
 function sum(values: number[]) { return values.reduce((total, value) => total + value, 0); }
+function round2(value: number) { return Math.round(value * 100) / 100; }
 

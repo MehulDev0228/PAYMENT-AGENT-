@@ -48,6 +48,8 @@ const STATUS_TONES: Record<string, string> = {
   payment_promised: "violet", active: "violet", high: "orange",
   reminder_sent: "info", customer_replied: "info", reminder_pending: "warning", awaiting_approval: "warning", medium: "warning", payment_match_review_required: "warning", pending: "warning",
   overdue: "orange", low: "neutral", cancelled: "neutral",
+  // Ledger sync outcomes and reconciliation flags.
+  new: "success", updated: "info", unchanged: "neutral", flagged: "warning", balance_mismatch: "warning", missing_from_ledger: "orange", amount_below_paid: "danger",
 };
 const TONE_CLASSES: Record<string, string> = {
   success: "bg-[#e7f6ee] text-[#05663f] [--dot:#0a8f5f]",
@@ -58,7 +60,7 @@ const TONE_CLASSES: Record<string, string> = {
   warning: "bg-[#fdf5df] text-[#8a5304] [--dot:#d99a0b]",
   neutral: "bg-[#eef0f3] text-[#4a515d] [--dot:#8a919e]",
 };
-const STATUS_LABELS: Record<string, string> = { payment_match_review_required: "needs review", awaiting_approval: "awaiting approval" };
+const STATUS_LABELS: Record<string, string> = { payment_match_review_required: "needs review", awaiting_approval: "awaiting approval", missing_from_ledger: "missing from ledger", amount_below_paid: "amount below paid" };
 
 export function StatusBadge({ value, className }: { value: string; className?: string }) {
   const tone = TONE_CLASSES[STATUS_TONES[value] ?? "neutral"];

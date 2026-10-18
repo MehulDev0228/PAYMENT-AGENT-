@@ -60,9 +60,21 @@ export interface Invoice {
   amountOutstanding: number;
   status: InvoiceStatus;
   source: string;
+  /** While reconciliationStatus is balance_mismatch: the balance the ERP reported, which AERA did not copy over its own. */
+  erpOutstanding?: number;
+  /** Set when a ledger sync found something a person must reconcile; AERA's own balance is left as is. */
+  reconciliationStatus?: ReconciliationStatus;
+  reconciliationNote?: string;
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * balance_mismatch: the ERP balance differs from AERA's.
+ * missing_from_ledger: a full-ledger sync no longer lists this open invoice (likely paid or cancelled in the ERP).
+ * amount_below_paid: the ERP amount is lower than what AERA has already recorded as paid.
+ */
+export type ReconciliationStatus = "balance_mismatch" | "missing_from_ledger" | "amount_below_paid";
 
 export interface Payment {
   id: string;
@@ -186,7 +198,7 @@ export interface AuditEvent {
   actorType: "aera" | "human" | "system";
   actorId?: string;
   eventType: string;
-  entityType: "invoice" | "payment" | "collection_case" | "collection_action" | "payment_promise" | "communication" | "import" | "automation";
+  entityType: "invoice" | "customer" | "payment" | "collection_case" | "collection_action" | "payment_promise" | "communication" | "import" | "automation";
   entityId: string;
   reason: string;
   dataSnapshot: Record<string, unknown>;

@@ -56,7 +56,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           <div className="scrollbar max-h-[420px] overflow-auto">
             <table className="table-base">
               <thead><tr><th scope="col">Invoice</th><th scope="col">Due</th><th scope="col" className="text-right">Outstanding</th><th scope="col">Status</th></tr></thead>
-              <tbody>{customer.invoices.map((invoice) => <tr key={invoice.id}><td className="font-mono text-[12px]">{invoice.invoiceNumber}</td><td className="tabular text-muted">{formatDate(invoice.dueDate)}</td><td className="tabular text-right">{formatMoney(invoice.amountOutstanding, invoice.currency)}</td><td><StatusBadge value={invoice.status} /></td></tr>)}</tbody>
+              <tbody>{customer.invoices.map((invoice) => <tr key={invoice.id}><td className="font-mono text-[12px]">{invoice.invoiceNumber}</td><td className="tabular text-muted">{formatDate(invoice.dueDate)}</td><td className="tabular text-right">{formatMoney(invoice.amountOutstanding, invoice.currency)}</td><td><span className="flex flex-wrap gap-1.5"><StatusBadge value={invoice.status} />{invoice.reconciliationStatus && <span title={invoice.reconciliationNote}><StatusBadge value={invoice.reconciliationStatus} /></span>}</span></td></tr>)}</tbody>
             </table>
           </div>
         </article>

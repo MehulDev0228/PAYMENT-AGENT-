@@ -1,4 +1,4 @@
-import type { ApprovalItem, AuditEvent, CaseDetail, CaseFilter, CaseListItem, CollectionAction, CollectionOverview, CollectionPolicy, Customer, CustomerDetail, CustomerSummary, Invoice, Payment, PaymentListItem, PaymentPromise, PromiseItem, SearchResult } from "@/lib/domain/types";
+import type { ApprovalItem, AuditEvent, CaseDetail, CaseFilter, CaseListItem, CollectionAction, CollectionOverview, CollectionPolicy, Customer, CustomerDetail, CustomerSummary, Invoice, Payment, PaymentListItem, PaymentPromise, PromiseItem, ReconciliationStatus, SearchResult } from "@/lib/domain/types";
 import type { ReplyClassificationInput } from "@/lib/domain/reply-outcome";
 import type { CollectionsEngine } from "./engine";
 
@@ -14,6 +14,40 @@ export interface InvoiceImportRow {
   customer_phone?: string;
   region?: string;
   account_manager?: string;
+  /** Balance still owed according to the ERP (optional "outstanding" / "balance" column). */
+  outstanding?: number;
+  /** Spreadsheet row number for messages; defaults to the row's position plus the header. */
+  row?: number;
+}
+
+export interface InvoiceSyncOptions {
+  /** The file is the complete open-invoice ledger: open invoices it does not list are flagged for review. */
+  fullLedger?: boolean;
+  /** Rows that failed validation before reaching the engine. Their invoice numbers still count as present in the file. */
+  invalidRows?: Array<{ row: number; invoiceNumber?: string; message: string }>;
+}
+
+export type InvoiceSyncOutcome = "new" | "updated" | "unchanged" | "flagged" | "rejected";
+
+export interface FieldChange { field: string; before: string | number | null; after: string | number | null }
+
+export interface InvoiceSyncRow {
+  /** Spreadsheet row; absent for invoices flagged because the full ledger no longer lists them. */
+  row?: number;
+  invoiceNumber: string;
+  outcome: InvoiceSyncOutcome;
+  changes: FieldChange[];
+  reconciliation?: ReconciliationStatus;
+  message?: string;
+}
+
+/** The ledger sync result. `imported` counts new plus updated rows and `reviewRequired` counts flagged ones. */
+export interface InvoiceSyncResult extends ImportResult {
+  dryRun: boolean;
+  fullLedger: boolean;
+  counts: Record<InvoiceSyncOutcome, number>;
+  /** Every row that is not unchanged, in file order, followed by invoices missing from a full ledger. */
+  rows: InvoiceSyncRow[];
 }
 
 export interface PaymentImportRow {
@@ -73,7 +107,8 @@ export interface AeraRepository {
   listApprovals(companyId: string, status?: string): Promise<ApprovalItem[]>;
   decideAction(companyId: string, actionId: string, decision: "approved" | "rejected", userId: string, note?: string): Promise<CollectionAction>;
   markActionExecuted(companyId: string, actionId: string, input: { subject: string; body: string; externalMessageId?: string }): Promise<CollectionAction>;
-  importInvoices(companyId: string, rows: InvoiceImportRow[], userId?: string): Promise<ImportResult>;
+  /** Syncs the ledger: new invoices are created, known ones updated, mismatches flagged. `dryRun` returns the same result without saving anything. */
+  importInvoices(companyId: string, rows: InvoiceImportRow[], userId?: string, options?: InvoiceSyncOptions & { dryRun?: boolean }): Promise<InvoiceSyncResult>;
   importPayments(companyId: string, rows: PaymentImportRow[]): Promise<ImportResult>;
   listPayments(companyId: string, matchStatus?: Payment["matchStatus"]): Promise<PaymentListItem[]>;
   paymentCandidates(companyId: string, paymentId: string): Promise<PaymentCandidate[]>;
@@ -120,7 +155,9 @@ export function createRepository(run: EngineRunner, listAudit: AeraRepository["l
     listAudit,
     decideAction: (c, id, decision, userId, note) => run(c, "write", (e) => e.decideAction(c, id, decision, userId, note)),
     markActionExecuted: (c, id, input) => run(c, "write", (e) => e.markActionExecuted(c, id, input)),
-    importInvoices: (c, rows, userId) => run(c, "write", (e) => e.importInvoices(c, rows, userId)),
+    importInvoices: (c, rows, userId, { dryRun, ...options } = {}) => dryRun
+      ? run(c, "read", (e) => e.previewInvoices(c, rows, userId, options))
+      : run(c, "write", (e) => e.importInvoices(c, rows, userId, options)),
     importPayments: (c, rows) => run(c, "write", (e) => e.importPayments(c, rows)),
     resolvePayment: (c, paymentId, invoiceId, userId) => run(c, "write", (e) => e.resolvePayment(c, paymentId, invoiceId, userId)),
     runDailyMonitor: (c) => run(c, "write", (e) => e.runDailyMonitor(c)),
