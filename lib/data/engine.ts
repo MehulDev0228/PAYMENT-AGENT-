@@ -6,14 +6,17 @@ import { replyOutcome, type ReplyClassificationInput } from "@/lib/domain/reply-
 import { canTransition } from "@/lib/domain/state-machine";
 import { OPEN_CASE_STATUSES } from "@/lib/domain/case-views";
 import { inRegions, regionKey } from "@/lib/domain/regions";
+import { ageingBucket, CALL_OUTCOMES, CALL_OUTCOME_LABELS } from "@/lib/domain/collector";
 import type {
-  ApprovalItem, AuditEvent, CaseDetail, CaseFilter, CaseListItem, CaseStatus, CollectionAction, CollectionCase, CollectionOverview,
-  Customer, CustomerDetail, CustomerSummary, DataSet, Invoice, Payment, PaymentListItem, PromiseItem, RegionSummary, SearchResult,
+  AgeingReport, AgeingRow, ApprovalItem, AuditEvent, CaseDetail, CaseFilter, CaseFollowUp, CaseListItem, CaseStatus, CollectionAction, CollectionCase, CollectionOverview,
+  Customer, CustomerDetail, CustomerSummary, DataSet, FollowUpDueItem, Invoice, Payment, PaymentListItem, PromiseItem, RegionSummary, SearchResult, WorkspaceUser,
 } from "@/lib/domain/types";
-import type { AuditReader, ImportResult, InvoiceImportRow, PaymentCandidate, PaymentImportRow, ReplyResult } from "./repository";
+import type { AuditReader, FollowUpInput, ImportResult, InvoiceImportRow, PaymentCandidate, PaymentImportRow, ReplyResult } from "./repository";
 
 const PRIORITY_RANK = { critical: 3, high: 2, medium: 1, low: 0 } as const;
 const OPEN_INVOICE = (invoice: Invoice) => invoice.status !== "cancelled" && invoice.amountOutstanding > 0;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_NOTE_LENGTH = 2000;
 
 type Actor = { type: AuditEvent["actorType"]; id?: string };
 const AERA: Actor = { type: "aera" };
@@ -70,13 +73,19 @@ export class CollectionsEngine {
     const invoices = this.indexById(this.invoicesOf(companyId));
     const customers = this.indexById(this.data.customers.filter((item) => item.companyId === companyId));
     const activePromises = new Map(this.data.promises.filter((item) => item.companyId === companyId && item.status === "active").map((item) => [item.invoiceId, item]));
+    const users = this.userNames(companyId);
+    const lastFollowUps = this.lastFollowUps(companyId);
     const q = filter.q?.trim().toLowerCase();
     return this.data.cases
       .filter((item) => item.companyId === companyId)
       .filter((item) => !filter.statuses?.length || filter.statuses.includes(item.status))
       .filter((item) => !filter.priority || item.priority === filter.priority)
       .filter((item) => !filter.customerId || item.customerId === filter.customerId)
-      .map((item) => ({ ...item, invoice: invoices.get(item.invoiceId)!, customer: customers.get(item.customerId)!, activePromise: activePromises.get(item.invoiceId) }))
+      .filter((item) => filter.assignedTo === undefined || (filter.assignedTo === null ? !item.assignedTo : item.assignedTo === filter.assignedTo))
+      .map((item) => ({
+        ...item, invoice: invoices.get(item.invoiceId)!, customer: customers.get(item.customerId)!, activePromise: activePromises.get(item.invoiceId),
+        assigneeName: item.assignedTo ? users.get(item.assignedTo) : undefined, lastFollowUp: lastFollowUps.get(item.id),
+      }))
       .filter((item) => !q || item.customer.name.toLowerCase().includes(q) || item.invoice.invoiceNumber.toLowerCase().includes(q) || item.customer.customerCode.toLowerCase().includes(q))
       .sort((a, b) => Number(a.status === "closed") - Number(b.status === "closed")
         || PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority]
@@ -88,12 +97,65 @@ export class CollectionsEngine {
     const record = this.data.cases.find((item) => item.companyId === companyId && item.id === id);
     if (!record) return undefined;
     const item = this.listCases(companyId, { customerId: record.customerId }).find((candidate) => candidate.id === id)!;
+    const users = this.userNames(companyId);
     return {
       ...item,
       actions: this.data.actions.filter((action) => action.collectionCaseId === id),
       communications: this.data.communications.filter((message) => message.collectionCaseId === id),
       promises: this.data.promises.filter((promise) => promise.invoiceId === item.invoiceId),
       payments: this.data.payments.filter((payment) => payment.invoiceId === item.invoiceId),
+      followUps: this.data.followUps
+        .filter((followUp) => followUp.collectionCaseId === id)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .map((followUp) => ({ ...followUp, createdByName: users.get(followUp.createdBy) })),
+    };
+  }
+
+  /** Workspace members who can own cases. */
+  listUsers(companyId: string): WorkspaceUser[] {
+    return this.data.users
+      .filter((user) => user.companyId === companyId)
+      .map(({ id, name, email, role }) => ({ id, name, email, role }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** Open cases whose latest follow-up planned a call for today or earlier, most overdue first. */
+  followUpsDue(companyId: string): FollowUpDueItem[] {
+    const today = this.today();
+    return this.listCases(companyId)
+      .filter((item) => item.status !== "closed" && item.lastFollowUp?.nextFollowUpDate !== undefined && item.lastFollowUp.nextFollowUpDate <= today)
+      .map((item) => ({ followUp: item.lastFollowUp!, case: item, daysLate: daysBetween(item.lastFollowUp!.nextFollowUpDate!, this.now) }))
+      .sort((a, b) => b.daysLate - a.daysLate || PRIORITY_RANK[b.case.priority] - PRIORITY_RANK[a.case.priority] || b.case.invoice.amountOutstanding - a.case.invoice.amountOutstanding);
+  }
+
+  /** Open balances per customer in 30-day bands past due, plus the invoice-level detail behind them. */
+  ageingReport(companyId: string): AgeingReport {
+    const customers = this.indexById(this.data.customers.filter((item) => item.companyId === companyId));
+    const empty = () => ({ notDue: 0, days1to30: 0, days31to60: 0, days61to90: 0, days90plus: 0, total: 0, openInvoices: 0 });
+    const byCustomer = new Map<string, AgeingRow>();
+    const totals = empty();
+    const invoices: AgeingReport["invoices"] = [];
+    for (const invoice of this.invoicesOf(companyId).filter(OPEN_INVOICE)) {
+      const customer = customers.get(invoice.customerId);
+      if (!customer) continue;
+      const daysOverdue = new Date(invoice.dueDate) < this.now ? daysBetween(invoice.dueDate, this.now) : 0;
+      const bucket = ageingBucket(daysOverdue);
+      let row = byCustomer.get(customer.id);
+      if (!row) {
+        row = { customerId: customer.id, customerCode: customer.customerCode, customerName: customer.name, region: customer.region, accountManager: customer.accountManager, ...empty() };
+        byCustomer.set(customer.id, row);
+      }
+      for (const target of [row, totals]) {
+        target[bucket] += invoice.amountOutstanding; target.total += invoice.amountOutstanding; target.openInvoices += 1;
+      }
+      invoices.push({ invoice, customer, daysOverdue, bucket });
+    }
+    const overdue = (row: AgeingRow) => row.total - row.notDue;
+    return {
+      asOf: this.today(),
+      rows: [...byCustomer.values()].sort((a, b) => overdue(b) - overdue(a) || b.total - a.total || a.customerName.localeCompare(b.customerName)),
+      totals,
+      invoices: invoices.sort((a, b) => b.daysOverdue - a.daysOverdue || b.invoice.amountOutstanding - a.invoice.amountOutstanding),
     };
   }
 
@@ -260,6 +322,46 @@ export class CollectionsEngine {
   }
 
   // ------------------------------------------------------------ mutations
+
+  /** Gives a case to a workspace user (null = unassigned). An unchanged assignment is not re-audited. */
+  assignCase(companyId: string, caseId: string, assigneeId: string | null, actorId: string): CollectionCase {
+    const collectionCase = this.data.cases.find((item) => item.companyId === companyId && item.id === caseId);
+    if (!collectionCase) throw new Error("Collection case not found");
+    const users = this.userNames(companyId);
+    if (assigneeId !== null && !users.has(assigneeId)) throw new Error("Assignee is not a user in this workspace");
+    const from = collectionCase.assignedTo ?? null;
+    if (from === assigneeId) return collectionCase;
+    collectionCase.assignedTo = assigneeId ?? undefined;
+    collectionCase.updatedAt = new Date().toISOString();
+    const fromName = from ? users.get(from) ?? from : null;
+    const toName = assigneeId ? users.get(assigneeId)! : null;
+    const reason = toName ? `Assigned to ${toName}${fromName ? ` (was ${fromName})` : ""}` : `Unassigned (was ${fromName})`;
+    this.audit(companyId, { type: "human", id: actorId }, toName ? "case_assigned" : "case_unassigned", "collection_case", collectionCase.id, reason, { from, to: assigneeId, fromName, toName });
+    return collectionCase;
+  }
+
+  /** Records a call or note on a case and, optionally, when to follow up next. */
+  logFollowUp(companyId: string, caseId: string, input: FollowUpInput, actorId: string): CaseFollowUp {
+    const collectionCase = this.data.cases.find((item) => item.companyId === companyId && item.id === caseId);
+    if (!collectionCase) throw new Error("Collection case not found");
+    if (!CALL_OUTCOMES.includes(input.outcome)) throw new Error("Unknown call outcome");
+    const note = (input.note ?? "").trim();
+    if (note.length > MAX_NOTE_LENGTH) throw new Error(`Notes are limited to ${MAX_NOTE_LENGTH} characters`);
+    const next = input.nextFollowUpDate || undefined;
+    if (next !== undefined) {
+      if (!ISO_DATE.test(next) || isoDate(new Date(`${next}T00:00:00Z`)) !== next) throw new Error("Next follow-up date must be a valid YYYY-MM-DD date");
+      if (next < this.today()) throw new Error("Next follow-up date cannot be in the past");
+    }
+    const followUp: CaseFollowUp = {
+      id: randomUUID(), companyId, collectionCaseId: collectionCase.id, customerId: collectionCase.customerId, outcome: input.outcome, note,
+      ...(next ? { nextFollowUpDate: next } : {}), createdBy: actorId, createdAt: new Date().toISOString(),
+    };
+    this.data.followUps.push(followUp);
+    collectionCase.updatedAt = followUp.createdAt;
+    const reason = `${CALL_OUTCOME_LABELS[input.outcome]}${next ? ` · next follow-up ${next}` : ""}${note ? ` · ${note.length > 140 ? `${note.slice(0, 139)}…` : note}` : ""}`;
+    this.audit(companyId, { type: "human", id: actorId }, "follow_up_logged", "collection_case", collectionCase.id, reason, { followUpId: followUp.id, outcome: input.outcome, nextFollowUpDate: next ?? null, note });
+    return followUp;
+  }
 
   decideAction(companyId: string, actionId: string, decision: "approved" | "rejected", userId: string, note?: string): CollectionAction {
     const action = this.data.actions.find((item) => item.companyId === companyId && item.id === actionId);
@@ -537,6 +639,20 @@ export class CollectionsEngine {
     this.data.auditEvents.push({ id: randomUUID(), companyId, actorType: actor.type, actorId: actor.id, eventType, entityType, entityId, reason, dataSnapshot, createdAt: new Date().toISOString() });
   }
 
+  private userNames(companyId: string) {
+    return new Map(this.data.users.filter((user) => user.companyId === companyId).map((user) => [user.id, user.name]));
+  }
+
+  private lastFollowUps(companyId: string) {
+    const latest = new Map<string, CaseFollowUp>();
+    for (const followUp of this.data.followUps) {
+      if (followUp.companyId !== companyId) continue;
+      const current = latest.get(followUp.collectionCaseId);
+      if (!current || followUp.createdAt >= current.createdAt) latest.set(followUp.collectionCaseId, followUp);
+    }
+    return latest;
+  }
+
   private invoicesOf(companyId: string) { return this.data.invoices.filter((item) => item.companyId === companyId); }
   private caseById(id: string) { return this.data.cases.find((item) => item.id === id); }
   private indexById<T extends { id: string }>(items: T[]) { return new Map(items.map((item) => [item.id, item])); }
@@ -544,7 +660,7 @@ export class CollectionsEngine {
 
 function sum(values: number[]) { return values.reduce((total, value) => total + value, 0); }
 
-const VIEW_KEYS = ["customers", "invoices", "payments", "cases", "actions", "promises", "communications"] as const;
+const VIEW_KEYS = ["customers", "invoices", "payments", "cases", "actions", "promises", "communications", "followUps"] as const;
 
 /**
  * The part of a working set that belongs to the customers `visible` accepts: those customers and their
@@ -558,7 +674,7 @@ export function customerView(data: DataSet, visible: (customer: Customer) => boo
   const owned = <T extends { customerId?: string }>(items: T[]) => items.filter((item) => item.customerId !== undefined && ids.has(item.customerId));
   const view: DataSet = {
     ...data, customers, invoices: owned(data.invoices), payments: owned(data.payments), cases: owned(data.cases),
-    actions: owned(data.actions), promises: owned(data.promises), communications: owned(data.communications),
+    actions: owned(data.actions), promises: owned(data.promises), communications: owned(data.communications), followUps: owned(data.followUps),
   };
   return {
     data: view,

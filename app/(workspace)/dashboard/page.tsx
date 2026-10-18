@@ -5,6 +5,7 @@ import { ActivityFeed } from "@/components/activity-feed";
 import { CasesTable } from "@/components/cases-table";
 import { RegionFilter, regionParam } from "@/components/region-filter";
 import { RegionTable } from "@/components/region-table";
+import { FollowUpsDue } from "@/components/follow-ups-due";
 import { PageHeader, SectionTitle, StatTile, TextLink, formatDate } from "@/components/ui";
 import { getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
@@ -17,6 +18,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ region?: string }> }) {
   const context = await getPageContext();
+  const { userId } = context;
   const region = regionParam((await searchParams).region);
   const scope = withRegion(context, region);
   const withRegionParam = (path: string) => (region ? `${path}${path.includes("?") ? "&" : "?"}region=${encodeURIComponent(region)}` : path);
@@ -29,6 +31,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const review = await repository.listPayments(scope, "payment_match_review_required");
   const regionRows = region ? [] : await repository.regionSummary(context);
   const regions = region ? await repository.regions(context) : regionRows.flatMap((row) => (row.region ? [row.region] : []));
+  const followUpsDue = await repository.followUpsDue(scope);
+  const lateFollowUps = followUpsDue.filter((item) => item.daysLate > 0).length;
   const maxAging = Math.max(1, ...overview.aging.map((item) => item.amount));
   const overdueShare = overview.totalOutstanding ? Math.round((overview.totalOverdue / overview.totalOutstanding) * 100) : 0;
 
@@ -77,10 +81,17 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       )}
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <article className="panel min-w-0 overflow-hidden">
-          <SectionTitle title="Priority cases" helper="Ranked by priority, age and exposure" action={<TextLink href={withRegionParam("/cases")}>All cases <ArrowUpRight size={14} /></TextLink>} />
-          <CasesTable cases={priorityCases} compact />
-        </article>
+        <div className="min-w-0 space-y-6">
+          <article className="panel min-w-0 overflow-hidden">
+            <SectionTitle title="Follow-ups due today" helper={followUpsDue.length ? `${followUpsDue.length} calls planned${lateFollowUps ? ` · ${lateFollowUps} already late` : ""}` : "Planned from the follow-up log on each case"}
+              action={<TextLink href="/cases?assignee=me">My cases <ArrowUpRight size={14} /></TextLink>} />
+            <FollowUpsDue items={followUpsDue} currentUserId={userId} />
+          </article>
+          <article className="panel min-w-0 overflow-hidden">
+            <SectionTitle title="Priority cases" helper="Ranked by priority, age and exposure" action={<TextLink href={withRegionParam("/cases")}>All cases <ArrowUpRight size={14} /></TextLink>} />
+            <CasesTable cases={priorityCases} compact />
+          </article>
+        </div>
         <div className="space-y-6">
           <article className="panel p-5">
             <div className="flex items-start justify-between">

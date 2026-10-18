@@ -1,4 +1,5 @@
 import { PGlite, type PGliteInterface } from "@electric-sql/pglite";
+import readXlsxFile from "read-excel-file/node";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { applyMigrations, createCompany, seedDemo } from "@/lib/data/db-setup";
@@ -9,11 +10,18 @@ import { DEMO_COMPANY_ID, DEMO_NOW } from "@/lib/data/seed";
 import type { SqlClient, SqlDatabase } from "@/lib/data/sql";
 import { upsertWorkspaceUser } from "@/lib/data/users";
 import type { RegionSummary } from "@/lib/domain/types";
+import { buildReport, toCsv, toXlsx } from "@/lib/exports";
 
 const C = companyScope(DEMO_COMPANY_ID);
 const OTHER_COMPANY = "00000000-0000-0000-0000-0000000000aa";
 const OTHER = companyScope(OTHER_COMPANY);
 const USER = "user-demo-manager";
+const TODAY = "2026-09-27";
+
+/** Workspace users each adapter knows: the mock's seed collectors, or rows provisioned in public.users. */
+interface People { collector: string; collectorName: string; other: string; outsider: string }
+const MOCK_PEOPLE: People = { collector: "user-demo-priya", collectorName: "Priya Nair", other: "user-demo-arjun", outsider: "user-not-in-workspace" };
+const PG_PEOPLE: People = { collector: "aaaaaaaa-0000-4000-8000-000000000001", collectorName: "Asha Collector", other: "aaaaaaaa-0000-4000-8000-000000000002", outsider: "aaaaaaaa-0000-4000-8000-0000000000ff" };
 
 function pgliteDatabase(pg: PGliteInterface): SqlDatabase {
   const client = (target: Pick<PGliteInterface, "query" | "exec">): SqlClient => ({
@@ -31,6 +39,14 @@ beforeAll(async () => {
   await applyMigrations(db);
   await seedDemo(db);
   await createCompany(db, { id: OTHER_COMPANY, name: "Unrelated tenant" });
+  const provision = async (id: string, companyId: string, name: string) => {
+    await db.query("insert into auth.users (id) values ($1)", [id]);
+    await upsertWorkspaceUser(db, { id, companyId, name, email: `${id.slice(-4)}@example.test`, role: "collection_manager" });
+  };
+  await provision(PG_PEOPLE.collector, C.companyId, PG_PEOPLE.collectorName);
+  await provision(PG_PEOPLE.other, C.companyId, "Ravi Second");
+  // A real user, but of another company: must never own this company's cases.
+  await provision(PG_PEOPLE.outsider, OTHER_COMPANY, "Olga Outsider");
 }, 120_000);
 afterAll(async () => { await template?.close(); });
 
@@ -39,12 +55,12 @@ async function freshPostgres() {
   return { db, repo: createPostgresRepository(db, { now: () => DEMO_NOW }) };
 }
 
-const adapters: Array<[string, () => Promise<AeraRepository>]> = [
-  ["mock", async () => createMockRepository()],
-  ["postgres", async () => (await freshPostgres()).repo],
+const adapters: Array<[string, () => Promise<AeraRepository>, People]> = [
+  ["mock", async () => createMockRepository(), MOCK_PEOPLE],
+  ["postgres", async () => (await freshPostgres()).repo, PG_PEOPLE],
 ];
 
-describe.each(adapters)("%s repository", (_name, make) => {
+describe.each(adapters)("%s repository", (_name, make, people) => {
   let repo: AeraRepository;
   beforeEach(async () => { repo = await make(); });
 
@@ -291,6 +307,175 @@ describe.each(adapters)("%s repository", (_name, make) => {
       const actions = new Set((await repo.listActions(C)).map((action) => action.id));
       expect(run.actions.every((action) => actions.has(action.id))).toBe(true);
     });
+
+    it("keeps owners, follow-ups and exports inside a regional user's regions", async () => {
+      const cases = await repo.listCases(C);
+      const southCase = cases.find((item) => item.customer.region === "South")!;
+      const northCase = cases.find((item) => item.customer.region === "North")!;
+      await expect(repo.assignCase(NORTH, southCase.id, people.collector, USER)).rejects.toThrow(/not found/);
+      await expect(repo.logFollowUp(NORTH, southCase.id, { outcome: "reached" }, USER)).rejects.toThrow(/not found/);
+      expect((await repo.getCase(C, southCase.id))!.followUps).toHaveLength(0);
+
+      await repo.assignCase(NORTH, northCase.id, people.collector, USER);
+      await repo.logFollowUp(NORTH, northCase.id, { outcome: "no_answer", nextFollowUpDate: TODAY }, USER);
+      const saved = (await repo.getCase(C, northCase.id))!;
+      expect(saved.assignedTo).toBe(people.collector);
+      expect(saved.followUps.map((item) => item.outcome)).toEqual(["no_answer"]);
+      expect((await repo.followUpsDue(NORTH)).map((item) => item.case.id)).toContain(northCase.id);
+
+      const exported = await buildReport(repo, NORTH, USER, "customers", new URLSearchParams());
+      expect(exported.tables[0].rows.length).toBe((await repo.listCustomers(NORTH)).length);
+      // ?region= can only narrow a regional user's export, never widen it.
+      const widened = await buildReport(repo, NORTH, USER, "customers", new URLSearchParams({ region: "South" }));
+      expect(widened.tables[0].rows).toHaveLength(0);
+      const ageing = await buildReport(repo, C, USER, "ageing", new URLSearchParams({ region: "North" }));
+      const customerRows = ageing.tables[0].rows.slice(0, -1); // the last row is the totals row
+      expect(customerRows.length).toBeGreaterThan(0);
+      expect(customerRows.every((row) => row[2] === "North")).toBe(true);
+    });
+  });
+
+  describe("case assignment", () => {
+    it("lists the workspace users who can own cases", async () => {
+      const users = await repo.listUsers(C);
+      expect(users.map((user) => user.id)).toEqual(expect.arrayContaining([people.collector, people.other]));
+      expect(users.some((user) => user.id === people.outsider)).toBe(false);
+    });
+
+    it("assigns a case, shows the owner's name and filters by owner", async () => {
+      const target = await caseFor("INV-1042");
+      await repo.assignCase(C, target.id, people.collector, USER);
+      const item = await caseFor("INV-1042");
+      expect(item).toMatchObject({ assignedTo: people.collector, assigneeName: people.collectorName });
+      const mine = await repo.listCases(C, { assignedTo: people.collector });
+      expect(mine.some((c) => c.id === target.id)).toBe(true);
+      expect(mine.every((c) => c.assignedTo === people.collector)).toBe(true);
+      expect((await repo.listCases(C, { assignedTo: people.other })).some((c) => c.id === target.id)).toBe(false);
+    });
+
+    it("audits every change and skips no-op reassignments", async () => {
+      const target = await caseFor("INV-1042");
+      const ownershipEvents = async () => (await repo.listAudit(C, { entityId: target.id })).filter((e) => e.eventType === "case_assigned" || e.eventType === "case_unassigned");
+      await repo.assignCase(C, target.id, null, USER); // the seed may already give the case an owner
+      const before = (await ownershipEvents()).length;
+      await repo.assignCase(C, target.id, people.collector, USER);
+      await repo.assignCase(C, target.id, people.collector, USER);
+      await repo.assignCase(C, target.id, people.other, USER);
+      await repo.assignCase(C, target.id, null, USER);
+      const events = await ownershipEvents();
+      expect(events).toHaveLength(before + 3);
+      // Events written in the same millisecond have no defined order, so match them by content.
+      expect(events.find((e) => e.eventType === "case_unassigned" && e.dataSnapshot.from === people.other)).toMatchObject({ actorType: "human", actorId: USER, dataSnapshot: { to: null } });
+      expect(events.find((e) => e.dataSnapshot.to === people.other)?.reason).toContain(`was ${people.collectorName}`);
+      const unassigned = await repo.listCases(C, { assignedTo: null });
+      expect(unassigned.some((c) => c.id === target.id)).toBe(true);
+      expect(unassigned.every((c) => !c.assignedTo)).toBe(true);
+    });
+
+    it("refuses users outside the workspace and unknown cases", async () => {
+      const target = await caseFor("INV-1042");
+      await expect(repo.assignCase(C, target.id, people.outsider, USER)).rejects.toThrow(/not a user in this workspace/);
+      await expect(repo.assignCase(C, "00000000-0000-0000-0000-00000000dead", people.collector, USER)).rejects.toThrow(/not found/);
+      await expect(repo.assignCase(OTHER, target.id, null, USER)).rejects.toThrow(/not found/);
+    });
+  });
+
+  describe("follow-up log", () => {
+    it("records a call, keeps it on the case and audits it", async () => {
+      const target = await caseFor("INV-1042");
+      const followUp = await repo.logFollowUp(C, target.id, { outcome: "promised", note: "  Promised NEFT on Tuesday  ", nextFollowUpDate: "2026-09-29" }, USER);
+      expect(followUp).toMatchObject({ outcome: "promised", note: "Promised NEFT on Tuesday", nextFollowUpDate: "2026-09-29", createdBy: USER, collectionCaseId: target.id });
+      const detail = (await repo.getCase(C, target.id))!;
+      expect(detail.followUps[0]).toMatchObject({ id: followUp.id, outcome: "promised" });
+      expect(detail.lastFollowUp?.id).toBe(followUp.id);
+      const [event] = (await repo.listAudit(C, { entityId: target.id })).filter((e) => e.eventType === "follow_up_logged");
+      expect(event).toMatchObject({ actorType: "human", actorId: USER, dataSnapshot: { followUpId: followUp.id, outcome: "promised", nextFollowUpDate: "2026-09-29" } });
+    });
+
+    it("lists follow-ups due today and drops them once a later call is logged", async () => {
+      const target = await caseFor("INV-1042");
+      await repo.logFollowUp(C, target.id, { outcome: "no_answer", nextFollowUpDate: TODAY }, USER);
+      const due = (await repo.followUpsDue(C)).find((item) => item.case.id === target.id);
+      expect(due).toMatchObject({ daysLate: 0, followUp: { outcome: "no_answer", nextFollowUpDate: TODAY } });
+      await repo.logFollowUp(C, target.id, { outcome: "reached", note: "Call back Thursday", nextFollowUpDate: "2026-10-01" }, USER);
+      expect((await repo.followUpsDue(C)).some((item) => item.case.id === target.id)).toBe(false);
+    });
+
+    it("drops a due follow-up when the case closes", async () => {
+      const target = await caseFor("INV-1042");
+      await repo.logFollowUp(C, target.id, { outcome: "promised", nextFollowUpDate: TODAY }, USER);
+      await repo.importPayments(C, [{ payment_reference: "UTR-FOLLOWUP", invoice_number: "INV-1042", amount: 84_000, payment_date: TODAY }]);
+      expect((await repo.followUpsDue(C)).some((item) => item.case.id === target.id)).toBe(false);
+    });
+
+    it("persists the log across reloads", async () => {
+      const target = await caseFor("INV-1042");
+      const followUp = await repo.logFollowUp(C, target.id, { outcome: "disputed", note: "Short delivery claimed" }, USER);
+      const again = (await repo.getCase(C, target.id))!.followUps.find((item) => item.id === followUp.id);
+      expect(again).toMatchObject({ outcome: "disputed", note: "Short delivery claimed" });
+      expect(again?.nextFollowUpDate).toBeUndefined();
+    });
+
+    it("rejects bad input without writing anything", async () => {
+      const target = await caseFor("INV-1042");
+      const before = (await repo.getCase(C, target.id))!.followUps.length;
+      await expect(repo.logFollowUp(C, target.id, { outcome: "angry" as never }, USER)).rejects.toThrow(/outcome/);
+      await expect(repo.logFollowUp(C, target.id, { outcome: "reached", nextFollowUpDate: "2026-09-20" }, USER)).rejects.toThrow(/past/);
+      await expect(repo.logFollowUp(C, target.id, { outcome: "reached", nextFollowUpDate: "2026-02-31" }, USER)).rejects.toThrow(/valid/);
+      await expect(repo.logFollowUp(C, target.id, { outcome: "reached", note: "x".repeat(2001) }, USER)).rejects.toThrow(/limited/);
+      await expect(repo.logFollowUp(OTHER, target.id, { outcome: "reached" }, USER)).rejects.toThrow(/not found/);
+      expect((await repo.getCase(C, target.id))!.followUps).toHaveLength(before);
+    });
+  });
+
+  describe("ageing and exports", () => {
+    it("buckets every open balance and reconciles with the overview", async () => {
+      const [report, overview] = await Promise.all([repo.ageingReport(C), repo.overview(C)]);
+      expect(report.asOf).toBe(TODAY);
+      expect(report.totals.total).toBe(overview.totalOutstanding);
+      const { notDue, days1to30, days31to60, days61to90, days90plus, total } = report.totals;
+      expect(notDue + days1to30 + days31to60 + days61to90 + days90plus).toBe(total);
+      expect(report.rows.reduce((sum, row) => sum + row.total, 0)).toBe(total);
+      expect(report.invoices).toHaveLength(report.totals.openInvoices);
+      const inv1042 = report.invoices.find((item) => item.invoice.invoiceNumber === "INV-1042")!;
+      expect(inv1042).toMatchObject({ daysOverdue: 7, bucket: "days1to30" });
+      expect(await repo.ageingReport(OTHER)).toMatchObject({ rows: [], totals: { total: 0 } });
+    });
+
+    it("exports the filtered case view with owner and last call", async () => {
+      const target = await caseFor("INV-1042");
+      await repo.assignCase(C, target.id, people.collector, USER);
+      await repo.logFollowUp(C, target.id, { outcome: "promised", note: "=HYPERLINK(\"x\")", nextFollowUpDate: "2026-09-29" }, USER);
+      const { tables } = await buildReport(repo, C, people.collector, "cases", new URLSearchParams({ assignee: "me", q: "INV-1042", view: "promised" }));
+      const [sheet] = tables;
+      expect(sheet.rows).toHaveLength(1);
+      const row = Object.fromEntries(sheet.columns.map((column, index) => [column.header, sheet.rows[0][index]]));
+      expect(row).toMatchObject({ Invoice: "INV-1042", "Assigned to": people.collectorName, Outstanding: 84_000, "Last call outcome": "Promised to pay", "Next follow-up": "2026-09-29" });
+      expect(toCsv(sheet)).toContain(`"'=HYPERLINK(""x"")"`);
+      const other = await buildReport(repo, C, people.other, "cases", new URLSearchParams({ assignee: "me", q: "INV-1042" }));
+      expect(other.tables[0].rows).toHaveLength(0);
+    });
+
+    it("writes the ageing workbook with a totals row and an invoice sheet", async () => {
+      const { tables } = await buildReport(repo, C, USER, "ageing", new URLSearchParams());
+      const sheets = await readXlsxFile(await toXlsx(tables));
+      expect(sheets.map((sheet) => sheet.sheet)).toEqual([`Ageing ${TODAY}`, "Open invoices"]);
+      const [summary, detail] = sheets;
+      expect(summary.data[0]).toEqual(["Customer code", "Customer", "Region", "Account manager", "Not due", "1–30 days", "31–60 days", "61–90 days", "90+ days", "Total outstanding", "Open invoices"]);
+      const totals = summary.data.at(-1)!;
+      expect(totals[1]).toMatch(/^Total \(\d+ customers\)$/);
+      expect(totals[9]).toBe((await repo.overview(C)).totalOutstanding);
+      expect(detail.data.length - 1).toBe((await repo.ageingReport(C)).invoices.length);
+      expect(detail.data[1][4]).toBeInstanceOf(Date);
+    });
+
+    it("exports customers and payments with the page filters", async () => {
+      const customers = await buildReport(repo, C, USER, "customers", new URLSearchParams({ q: "CUS-0001" }));
+      expect(customers.tables[0].rows.map((row) => row[0])).toEqual(["CUS-0001"]);
+      const review = await buildReport(repo, C, USER, "payments", new URLSearchParams({ status: "payment_match_review_required" }));
+      expect(review.tables[0].rows).toHaveLength((await repo.listPayments(C, "payment_match_review_required")).length);
+      expect(review.tables[0].rows[0][3]).toBe("needs review");
+    });
   });
 });
 
@@ -304,6 +489,19 @@ describe("postgres adapter", () => {
     expect(item.invoice).toMatchObject({ amountPaid: 84_000, amountOutstanding: 0, status: "paid" });
     const [row] = await db.query<{ amount_paid: string }>("select amount_paid::text from public.invoices where company_id = $1 and invoice_number = 'INV-1042'", [C.companyId]);
     expect(Number(row.amount_paid)).toBe(84_000);
+  });
+
+  it("stores owners and follow-ups in their own columns and table", async () => {
+    const { db, repo } = await freshPostgres();
+    const target = (await repo.listCases(C, { q: "INV-1042" }))[0];
+    expect(target.assignedTo).toBeUndefined(); // the demo seed has no provisioned collectors
+    await repo.assignCase(C, target.id, PG_PEOPLE.collector, USER);
+    await repo.logFollowUp(C, target.id, { outcome: "no_answer", note: "Line busy", nextFollowUpDate: "2026-09-28" }, USER);
+    const [caseRow] = await db.query<{ assigned_to: string }>("select assigned_to from public.collection_cases where id = $1", [target.id]);
+    expect(caseRow.assigned_to).toBe(PG_PEOPLE.collector);
+    const rows = await db.query<{ outcome: string; note: string; next: string; created_by: string }>(
+      "select outcome, note, next_follow_up_date::text as next, created_by from public.case_follow_ups where collection_case_id = $1", [target.id]);
+    expect(rows).toEqual([{ outcome: "no_answer", note: "Line busy", next: "2026-09-28", created_by: USER }]);
   });
 
   it("serialises concurrent writers so a payment is applied once", async () => {

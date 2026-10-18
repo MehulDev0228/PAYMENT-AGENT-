@@ -1,4 +1,4 @@
-import { Bot, Building2, FileUp, Gauge, HandCoins, Inbox, ListChecks, MapPinned, Settings2, ShieldCheck, Workflow } from "lucide-react";
+import { Bot, Building2, CalendarRange, FileUp, Gauge, HandCoins, Inbox, ListChecks, MapPinned, Settings2, ShieldCheck, Workflow } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export type NavCountKey = "approvals" | "review" | "attention";
@@ -16,6 +16,7 @@ export const NAV: NavGroup[] = [
   { label: "Reconcile", items: [
     { href: "/payments", label: "Payments", icon: HandCoins, count: "review" },
     { href: "/customers", label: "Customers", icon: Building2 },
+    { href: "/ageing", label: "Ageing report", icon: CalendarRange },
     { href: "/imports", label: "Imports", icon: FileUp },
   ] },
   { label: "Operate", items: [

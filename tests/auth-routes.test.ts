@@ -26,6 +26,10 @@ const repo = vi.hoisted(() => ({
   overview: vi.fn(async (companyId: string) => ({ companyId })),
   decideAction: vi.fn(async () => ({ ok: true })),
   runDailyMonitor: vi.fn(async (companyId: string) => ({ companyId, reviewed: 0, created: 0, actions: [] })),
+  listCases: vi.fn(async () => []),
+  today: vi.fn(async () => "2026-09-27"),
+  assignCase: vi.fn(async () => ({ ok: true })),
+  logFollowUp: vi.fn(async () => ({ ok: true })),
 }));
 
 vi.mock("@/lib/auth/supabase", () => ({ verifiedSessionUser: async () => state.session }));
@@ -35,6 +39,9 @@ vi.mock("@/lib/data/users", () => ({ findUserProfile: async (_db: unknown, id: s
 const overview = await import("@/app/api/collections/overview/route");
 const approve = await import("@/app/api/collections/actions/[id]/approve/route");
 const dailyMonitor = await import("@/app/api/automation/daily-monitor/route");
+const exportRoute = await import("@/app/api/export/[report]/route");
+const assign = await import("@/app/api/collections/cases/[id]/assign/route");
+const followUps = await import("@/app/api/collections/cases/[id]/follow-ups/route");
 const { proxy } = await import("@/proxy");
 
 const SPOOF = { "x-company-id": OTHER, "x-user-id": MANAGER, "x-user-role": "admin" };
@@ -105,6 +112,51 @@ describe("API routes", () => {
     const response = await approve.POST(new Request("http://localhost/api/collections/actions/action-1/approve", { method: "POST", headers: { authorization: `Bearer ${TOKEN}` } }), { params });
     expect(response.status).toBe(401);
     expect(repo.decideAction).not.toHaveBeenCalled();
+  });
+});
+
+describe("collector workflow routes", () => {
+  const caseParams = Promise.resolve({ id: "case-1" });
+  const json = (url: string, body: unknown, headers: Record<string, string> = {}) =>
+    new Request(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
+
+  it("let viewers export, scoped to their own company and identity", async () => {
+    state.session = { id: VIEWER };
+    const response = await exportRoute.GET(new Request("http://localhost/api/export/cases?assignee=me", { headers: SPOOF }), { params: Promise.resolve({ report: "cases" }) });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("spreadsheetml");
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="aera-cases-2026-09-27.xlsx"');
+    expect(repo.listCases).toHaveBeenCalledWith({ companyId: ACME, regions: null }, expect.objectContaining({ assignedTo: VIEWER }));
+  });
+
+  it("refuse exports without a session and unknown reports", async () => {
+    expect((await exportRoute.GET(new Request("http://localhost/api/export/cases"), { params: Promise.resolve({ report: "cases" }) })).status).toBe(401);
+    state.session = { id: VIEWER };
+    expect((await exportRoute.GET(new Request("http://localhost/api/export/secrets"), { params: Promise.resolve({ report: "secrets" }) })).status).toBe(404);
+  });
+
+  it("keep assignment and follow-ups manager-only", async () => {
+    state.session = { id: VIEWER };
+    expect((await assign.POST(json("http://localhost/api/collections/cases/case-1/assign", { assigneeId: VIEWER }, SPOOF), { params: caseParams })).status).toBe(403);
+    expect((await followUps.POST(json("http://localhost/api/collections/cases/case-1/follow-ups", { outcome: "reached" }, SPOOF), { params: caseParams })).status).toBe(403);
+    expect(repo.assignCase).not.toHaveBeenCalled();
+    expect(repo.logFollowUp).not.toHaveBeenCalled();
+  });
+
+  it("record the signed-in manager on assignments and follow-ups", async () => {
+    state.session = { id: MANAGER };
+    expect((await assign.POST(json("http://localhost/api/collections/cases/case-1/assign", { assigneeId: null }, { "x-user-id": VIEWER }), { params: caseParams })).status).toBe(200);
+    expect(repo.assignCase).toHaveBeenCalledWith(expect.objectContaining({ companyId: ACME, regions: null }), "case-1", null, MANAGER);
+    const response = await followUps.POST(json("http://localhost/api/collections/cases/case-1/follow-ups", { outcome: "no_answer", note: "Busy", nextFollowUpDate: "" }), { params: caseParams });
+    expect(response.status).toBe(201);
+    expect(repo.logFollowUp).toHaveBeenCalledWith(expect.objectContaining({ companyId: ACME, regions: null }), "case-1", { outcome: "no_answer", note: "Busy", nextFollowUpDate: undefined }, MANAGER);
+  });
+
+  it("reject malformed follow-ups before they reach the repository", async () => {
+    state.session = { id: MANAGER };
+    expect((await followUps.POST(json("http://localhost/api/collections/cases/case-1/follow-ups", { outcome: "shouted" }), { params: caseParams })).status).toBe(400);
+    expect((await followUps.POST(json("http://localhost/api/collections/cases/case-1/follow-ups", { outcome: "reached", nextFollowUpDate: "tomorrow" }), { params: caseParams })).status).toBe(400);
+    expect(repo.logFollowUp).not.toHaveBeenCalled();
   });
 });
 

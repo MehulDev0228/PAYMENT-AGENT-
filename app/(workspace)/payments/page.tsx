@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { FileUp, HandCoins } from "lucide-react";
+import { ExportLinks } from "@/components/export-links";
 import { PaymentReview } from "@/components/payment-review";
 import { RegionFilter, regionParam } from "@/components/region-filter";
 import { EmptyState, PageHeader, Pagination, StatusBadge, Tabs, formatDate } from "@/components/ui";
@@ -33,7 +34,8 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Reconciliation" title="Every rupee, accounted for." muted="Ambiguous bank entries are never applied on a guess." actions={context.regions === null && <Link href="/imports" className="btn-outline"><FileUp size={15} /> Import bank file</Link>}>
+      <PageHeader eyebrow="Reconciliation" title="Every rupee, accounted for." muted="Ambiguous bank entries are never applied on a guess."
+        actions={<><ExportLinks report="payments" query={{ status: view === "all" ? undefined : view, region }} />{context.regions === null && <Link href="/imports" className="btn-outline"><FileUp size={15} /> Import bank file</Link>}</>}>
         <RegionFilter regions={regions} active={region} hrefFor={(next) => href(view, 1, next)} />
         {(region || context.regions !== null) && <p className="mt-3 max-w-xl text-[13px] text-muted">Payments not yet tied to a customer belong to no region. {context.regions === null ? "Clear the region filter to see them." : "A user with access to every region matches them."}</p>}
       </PageHeader>

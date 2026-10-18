@@ -1,6 +1,6 @@
 import { AuthError } from "@/lib/auth/context";
 import { inRegions } from "@/lib/domain/regions";
-import type { ApprovalItem, AuditEvent, CaseDetail, CaseFilter, CaseListItem, CollectionAction, CollectionOverview, CollectionPolicy, Customer, CustomerDetail, CustomerSummary, Invoice, Payment, PaymentListItem, PaymentPromise, PromiseItem, RegionSummary, SearchResult } from "@/lib/domain/types";
+import type { AgeingReport, ApprovalItem, AuditEvent, CallOutcome, CaseDetail, CaseFilter, CaseFollowUp, CaseListItem, CollectionAction, CollectionCase, CollectionOverview, CollectionPolicy, Customer, CustomerDetail, CustomerSummary, FollowUpDueItem, Invoice, Payment, PaymentListItem, PaymentPromise, PromiseItem, RegionSummary, SearchResult, WorkspaceUser } from "@/lib/domain/types";
 import type { ReplyClassificationInput } from "@/lib/domain/reply-outcome";
 import { customerView, type CollectionsEngine } from "./engine";
 
@@ -48,6 +48,13 @@ export interface PaymentCandidate {
   invoice: Invoice;
   customerName: string;
   reason: string;
+}
+
+export interface FollowUpInput {
+  outcome: CallOutcome;
+  note?: string;
+  /** YYYY-MM-DD, today or later. Omit when no further call is planned. */
+  nextFollowUpDate?: string;
 }
 
 export interface Paged<T> {
@@ -116,6 +123,13 @@ export interface AeraRepository {
   search(scope: DataScope, q: string): Promise<SearchResult[]>;
   summary(scope: DataScope): Promise<Record<string, unknown>>;
   recentPayments(scope: DataScope): Promise<Payment[]>;
+  /** Workspace members (public.users) who can own cases. Users are company-wide, not regional. */
+  listUsers(scope: DataScope): Promise<WorkspaceUser[]>;
+  followUpsDue(scope: DataScope): Promise<FollowUpDueItem[]>;
+  ageingReport(scope: DataScope): Promise<AgeingReport>;
+  /** A regional scope can assign and log follow-ups only on cases in its regions. */
+  assignCase(scope: DataScope, caseId: string, assigneeId: string | null, actorId: string): Promise<CollectionCase>;
+  logFollowUp(scope: DataScope, caseId: string, input: FollowUpInput, actorId: string): Promise<CaseFollowUp>;
 }
 
 export interface AuditFilter { entityId?: string; entityType?: AuditEvent["entityType"]; limit?: number }
@@ -184,5 +198,10 @@ export function createRepository(runCompany: EngineRunner, readAudit: AuditReade
     runDailyMonitor: (s) => run(s, "write", (e) => e.runDailyMonitor(s.companyId)),
     checkPromises: (s) => run(s, "write", (e) => e.checkPromises(s.companyId)),
     recordReply: (s, input, classification) => run(s, "write", (e) => e.recordReply(s.companyId, input, classification)),
+    listUsers: (s) => run(s, "read", (e) => e.listUsers(s.companyId)),
+    followUpsDue: (s) => run(s, "read", (e) => e.followUpsDue(s.companyId)),
+    ageingReport: (s) => run(s, "read", (e) => e.ageingReport(s.companyId)),
+    assignCase: (s, caseId, assigneeId, actorId) => run(s, "write", (e) => e.assignCase(s.companyId, caseId, assigneeId, actorId)),
+    logFollowUp: (s, caseId, input, actorId) => run(s, "write", (e) => e.logFollowUp(s.companyId, caseId, input, actorId)),
   };
 }

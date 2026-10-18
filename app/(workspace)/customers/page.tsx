@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowUpRight, Building2, Search } from "lucide-react";
 import { RegionFilter, regionParam } from "@/components/region-filter";
+import { ExportLinks } from "@/components/export-links";
 import { EmptyState, PageHeader, Pagination } from "@/components/ui";
 import { getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
@@ -26,7 +27,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Accounts" title="Who owes what." muted="Ranked by overdue exposure.">
+      <PageHeader eyebrow="Accounts" title="Who owes what." muted="Ranked by overdue exposure."
+        actions={<><Link href="/ageing" className="btn-ghost">Ageing report</Link><ExportLinks report="customers" query={{ q, region }} /></>}>
         <RegionFilter regions={regions} active={region} hrefFor={(next) => href(1, next)} />
       </PageHeader>
       <div className="panel overflow-hidden">
