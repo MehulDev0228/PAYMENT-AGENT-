@@ -1,2 +1,3 @@
-invoice_number,customer_name,customer_email,invoice_date,due_date,amount,currency,customer_code,customer_phone,region,account_manager
-INV-1042,Atlas Foods,accounts@atlas-foods.example,2026-08-21,2026-09-20,84000,INR,CUS-0001,+91 90000 00001,West,Ananya Rao
+bill_number,customer_email,amount_due,due_date
+INV-1042,accounts@atlas-foods.example,84000,2026-09-20
+INV-1043,payables@cedar-logistics.example,1250000,2026-10-05

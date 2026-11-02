@@ -255,10 +255,12 @@ export class CollectionsEngine {
   importInvoices(companyId: string, rows: InvoiceImportRow[], userId?: string): ImportResult {
     const result: ImportResult = { imported: 0, rejected: 0, reviewRequired: 0, errors: [] };
     rows.forEach((row, index) => {
-      if (!row.invoice_number || !row.customer_name || !row.customer_email || !row.invoice_date || !row.due_date || !row.amount || !row.currency) {
-        result.rejected += 1; result.errors.push({ row: index + 2, message: "Missing required invoice field" }); return;
+      if (!row.invoice_number || !row.customer_email || !row.due_date || !row.amount) {
+        result.rejected += 1; result.errors.push({ row: index + 2, message: "Needs a bill number, customer email, amount due and due date" }); return;
       }
-      if (row.due_date < row.invoice_date) {
+      const invoiceDate = row.invoice_date || row.due_date;
+      const currency = row.currency || this.data.companies.find((item) => item.id === companyId)?.currency || "INR";
+      if (row.due_date < invoiceDate) {
         result.rejected += 1; result.errors.push({ row: index + 2, message: `Due date precedes invoice date for ${row.invoice_number}` }); return;
       }
       if (this.data.invoices.some((item) => item.companyId === companyId && item.invoiceNumber === row.invoice_number)) {
@@ -267,15 +269,15 @@ export class CollectionsEngine {
       let customer = this.data.customers.find((item) => item.companyId === companyId && ((row.customer_code && item.customerCode === row.customer_code) || item.email.toLowerCase() === row.customer_email.toLowerCase()));
       if (!customer) {
         customer = {
-          id: randomUUID(), companyId, customerCode: row.customer_code || `CUS-IMP-${this.data.customers.length + 1}`, name: row.customer_name,
+          id: randomUUID(), companyId, customerCode: row.customer_code || `CUS-IMP-${this.data.customers.length + 1}`, name: row.customer_name || nameFromEmail(row.customer_email),
           email: row.customer_email, phone: row.customer_phone, region: row.region, accountManager: row.account_manager, status: "active", createdAt: new Date().toISOString(),
         } satisfies Customer;
         this.data.customers.push(customer);
       }
       const amount = Number(row.amount);
       this.data.invoices.push({
-        id: randomUUID(), companyId, customerId: customer.id, invoiceNumber: row.invoice_number, invoiceDate: row.invoice_date, dueDate: row.due_date,
-        amount, currency: row.currency, amountPaid: 0, amountOutstanding: amount, status: new Date(row.due_date) < this.now ? "overdue" : "pending",
+        id: randomUUID(), companyId, customerId: customer.id, invoiceNumber: row.invoice_number, invoiceDate, dueDate: row.due_date,
+        amount, currency, amountPaid: 0, amountOutstanding: amount, status: new Date(row.due_date) < this.now ? "overdue" : "pending",
         source: "file_import", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       });
       result.imported += 1;
@@ -494,6 +496,12 @@ export class CollectionsEngine {
   private invoicesOf(companyId: string) { return this.data.invoices.filter((item) => item.companyId === companyId); }
   private caseById(id: string) { return this.data.cases.find((item) => item.id === id); }
   private indexById<T extends { id: string }>(items: T[]) { return new Map(items.map((item) => [item.id, item])); }
+}
+
+/** "accounts@bluebird-foods.co.in" → "Bluebird Foods", for bills uploaded without a customer name. */
+function nameFromEmail(email: string): string {
+  const label = email.split("@")[1]?.split(".")[0] ?? email;
+  return label.split(/[-_]+/).filter(Boolean).map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ") || email;
 }
 
 function sum(values: number[]) { return values.reduce((total, value) => total + value, 0); }

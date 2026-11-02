@@ -26,7 +26,7 @@ async function main() {
       const name = args.find((arg, index) => !arg.startsWith("--") && !args[index - 1]?.startsWith("--"));
       if (!name) throw new Error('Usage: npm run db:create-company -- "Company name" [--currency INR] [--timezone Asia/Kolkata]');
       const id = await createCompany(db, { name, currency: option(args, "currency"), timezone: option(args, "timezone") });
-      console.log(`Created company ${id}. Set KINDLYPAY_DEV_COMPANY_ID=${id} until authentication is enabled.`);
+      console.log(`Created company ${id}. Point n8n at it with x-company-id. (Signing up at /sign-up creates a separate company.)`);
     } else if (command === "seed-demo") {
       const id = await seedDemo(db);
       console.log(`Seeded demo company ${id}`);

@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Search } from "lucide-react";
 import { CasesTable } from "@/components/cases-table";
 import { PageHeader, Pagination, Tabs } from "@/components/ui";
-import { getRequestContext } from "@/lib/auth";
+import { getSessionContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
 import { CASE_VIEWS, isCaseView, type CaseView } from "@/lib/domain/case-views";
 import type { CollectionCase } from "@/lib/domain/types";
 
-export const metadata: Metadata = { title: "Cases" };
+export const metadata: Metadata = { title: "Unpaid bills" };
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 25;
@@ -17,7 +18,7 @@ type Search = { view?: string; q?: string; priority?: string; page?: string };
 
 export default async function CasesPage({ searchParams }: { searchParams: Promise<Search> }) {
   const params = await searchParams;
-  const { companyId } = getRequestContext();
+  const { companyId } = await getSessionContext();
   const view: CaseView = isCaseView(params.view) ? params.view : "open";
   const q = params.q?.trim() || undefined;
   const priority = PRIORITIES.find((item) => item === params.priority);
@@ -39,30 +40,30 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Operational queue" title="Collection cases." muted="Every invoice that needs attention, with its next step." />
+      <PageHeader eyebrow="Unpaid bills" title="Who still owes you." muted="Every unpaid bill, with what happens next." />
       <div className="panel overflow-hidden">
         <div className="border-b border-line px-3 pt-1">
           <Tabs active={view} items={(Object.keys(CASE_VIEWS) as CaseView[]).map((key) => ({ key, label: CASE_VIEWS[key].label, href: href({ view: key, page: undefined }), count: counts[key] }))} />
         </div>
         <form action="/cases" className="flex flex-wrap gap-2 border-b border-line px-5 py-3" role="search">
-            {view !== "open" && <input type="hidden" name="view" value={view} />}
-            <label className="relative">
-              <span className="sr-only">Search cases</span>
-              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
-              <input name="q" defaultValue={q} placeholder="Customer, invoice or code" className="input w-[min(260px,70vw)] pl-9" />
-            </label>
-            <label>
-              <span className="sr-only">Priority</span>
-              <select name="priority" defaultValue={priority ?? ""} className="input w-auto pr-8">
-                <option value="">Any priority</option>
-                {PRIORITIES.map((item) => <option key={item} value={item} className="capitalize">{item}</option>)}
-              </select>
-            </label>
-            <button className="btn-primary" type="submit">Apply</button>
-            {(q || priority) && <a href={href({ q: undefined, priority: undefined, page: undefined })} className="btn-ghost">Clear</a>}
+          {view !== "open" && <input type="hidden" name="view" value={view} />}
+          <label className="relative flex-1 sm:max-w-sm">
+            <span className="sr-only">Search unpaid bills</span>
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
+            <input name="q" defaultValue={q} placeholder="Customer or bill number" className="input pl-9" />
+          </label>
+          <label>
+            <span className="sr-only">Priority</span>
+            <select name="priority" defaultValue={priority ?? ""} className="input w-auto pr-8">
+              <option value="">Any urgency</option>
+              {PRIORITIES.map((item) => <option key={item} value={item}>{item.charAt(0).toUpperCase() + item.slice(1)}</option>)}
+            </select>
+          </label>
+          <button className="btn-primary" type="submit">Search</button>
+          {(q || priority) && <Link href={href({ q: undefined, priority: undefined, page: undefined })} className="btn-ghost">Clear</Link>}
         </form>
         <CasesTable cases={rows} />
-        <Pagination page={page} pageCount={pageCount} total={all.length} label="cases" hrefFor={(next) => href({ page: String(next) })} />
+        <Pagination page={page} pageCount={pageCount} total={all.length} label="bills" hrefFor={(next) => href({ page: String(next) })} />
       </div>
     </div>
   );

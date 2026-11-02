@@ -63,21 +63,28 @@ The invoice is settled, the promise is marked kept, the case closes and each ste
 | --- | --- |
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | Use the Responses API for drafting and classification instead of the local deterministic fallback |
 | `KINDLYPAY_INTERNAL_API_TOKEN` | When set, `/api/automation/*` and the execution callback require `Authorization: Bearer <token>` (used by n8n). The workspace's automation console uses server actions and is unaffected |
-| `KINDLYPAY_DEV_COMPANY_ID` | Company used for unauthenticated local requests |
+| `KINDLYPAY_SESSION_SECRET` | Signs sign-in sessions. At least 32 characters; required in production |
+| `KINDLYPAY_DEMO_LOGIN` | `off` removes the one-click demo workspace from the sign-in page |
 | `KINDLYPAY_DATA_ADAPTER`, `DATABASE_URL` | `postgres` persists everything to PostgreSQL/Supabase; `mock` (default) keeps the in-memory demo |
+
+## Sign-in
+
+People create an account at `/sign-up`: it makes a new, empty company with the default reminder rules and signs them in. Passwords are stored only as scrypt hashes (`public.accounts`, migration `004`); sessions are a signed, httpOnly cookie. `proxy.ts` sends anyone without a session to `/sign-in`, answers API calls with 401, and only trusts `x-company-id` on automation endpoints that carry `KINDLYPAY_INTERNAL_API_TOKEN` (n8n). `/api/auth/demo` opens the fictional demo company in one click. In demo mode (`mock` adapter) accounts and their data live in memory and reset when the server restarts.
+
+New workspaces get a getting-started panel and a guided tour on first visit; `/guide` explains the product in plain words.
 
 ## Persisting to Supabase / PostgreSQL
 
 1. Put `DATABASE_URL` (Supabase: Project Settings → Database → connection string) and `KINDLYPAY_DATA_ADAPTER=postgres` in `.env.local`.
 2. Apply the schema: `npm run db:migrate` (safe to re-run; a database where `001_initial.sql` was pasted into the SQL editor is detected).
-3. Create your company and its default policy ladder: `npm run db:create-company -- "Your Company Pvt Ltd" --timezone Asia/Kolkata`, then set the printed `KINDLYPAY_DEV_COMPANY_ID`. Or load the demo dataset with `npm run db:seed-demo`.
+3. Sign up at `/sign-up` to create your company, or load the demo dataset with `npm run db:seed-demo` for the one-click demo.
 4. `npm run dev`. Imports, approvals, payment matches, replies and automation runs are now saved, with every change in `audit_events`.
 
 Each write runs in a transaction under a per-company lock and stores only what changed; see `docs/architecture.md`. n8n: see `n8n/README.md`; workflows stay inactive until credentials are supplied. Gmail is connected inside n8n, never in this app.
 
 ## Not in V1 (next phase)
 
-- Real authentication. The current request context is a demo identity taken from headers or `KINDLYPAY_DEV_COMPANY_ID`.
+- Billing for the plans on the pricing section, invitations for more team members, and password reset by email.
 - Editable policy ladder and per-customer policy overrides.
 - Sending email directly from the app. Dispatch from the console is simulated and logged only.
 - Partial-payment allocation across several invoices from one bank entry.

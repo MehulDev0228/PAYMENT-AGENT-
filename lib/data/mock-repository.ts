@@ -1,3 +1,4 @@
+import { defaultPolicy } from "@/lib/domain/policy";
 import { CollectionsEngine } from "./engine";
 import { createRepository, type KindlyPayRepository } from "./repository";
 import { createSeedData, DEMO_NOW } from "./seed";
@@ -8,11 +9,16 @@ export function createMockRepository(): KindlyPayRepository {
   return createRepository(
     async (_companyId, _mode, fn) => fn(engine),
     async (companyId, filter) => engine.listAudit(companyId, filter),
+    async (input) => {
+      if (engine.data.companies.some((company) => company.id === input.id)) return;
+      engine.data.companies.push({ id: input.id, name: input.name, currency: input.currency ?? "INR", timezone: input.timezone ?? "Asia/Kolkata", autonomyMode: "routine_automatic", createdAt: new Date().toISOString() });
+      engine.data.policies.push(defaultPolicy(input.id));
+    },
   );
 }
 
 // Bump when the repository shape changes so dev-server hot reloads do not keep a stale instance.
-const INSTANCE_VERSION = 4;
+const INSTANCE_VERSION = 6;
 declare global { var __kindlypayMockRepository: { version: number; repository: KindlyPayRepository } | undefined; }
 
 export function sharedMockRepository(): KindlyPayRepository {

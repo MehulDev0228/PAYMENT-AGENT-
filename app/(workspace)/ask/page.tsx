@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Ask KindlyPay" };
 export default function AskPage() {
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Receivables intelligence" title="Ask KindlyPay." muted="Read-only answers, each with its source." />
+      <PageHeader eyebrow="Ask KindlyPay" title="Ask in plain words." muted="Every answer shows where the number came from." />
       <AskKindlyPay />
     </div>
   );

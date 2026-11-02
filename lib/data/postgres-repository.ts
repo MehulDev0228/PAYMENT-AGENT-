@@ -172,5 +172,9 @@ export function createPostgresRepository(db: SqlDatabase, options: PostgresRepos
     });
     reads.delete(companyId);
     return result;
-  }, listAudit);
+  }, listAudit, async (input) => {
+    // Imported lazily: db-setup itself imports this module.
+    const { createCompany } = await import("./db-setup");
+    await createCompany(db, input);
+  });
 }

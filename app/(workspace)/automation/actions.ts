@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { getRequestContext, requireManager } from "@/lib/auth";
+import { getSessionContext, requireManager } from "@/lib/auth";
 import { generateReminder } from "@/lib/ai/communication";
 import { classifyCustomerReply } from "@/lib/ai/customer-reply";
 import { repository } from "@/lib/data";
@@ -20,7 +20,7 @@ function failed(error: unknown): JobResult {
 
 export async function runDailyMonitor(): Promise<JobResult> {
   try {
-    const context = getRequestContext(); requireManager(context);
+    const context = await getSessionContext(); requireManager(context);
     const result = await repository.runDailyMonitor(context.companyId);
     const approvals = result.actions.filter((action) => action.status === "awaiting_approval").length;
     return done("Daily monitor finished", [`Reviewed ${result.reviewed} overdue invoices`, `Created ${result.created} new actions`, `${result.created - approvals} routine reminders queued · ${approvals} sent for approval`]);
@@ -29,7 +29,7 @@ export async function runDailyMonitor(): Promise<JobResult> {
 
 export async function checkPromises(): Promise<JobResult> {
   try {
-    const context = getRequestContext(); requireManager(context);
+    const context = await getSessionContext(); requireManager(context);
     const result = await repository.checkPromises(context.companyId);
     return done("Promise check finished", [`Checked ${result.checked} promises due by ${await repository.today(context.companyId)}`, `${result.fulfilled} kept · ${result.missed} missed and escalated`]);
   } catch (error) { return failed(error); }
@@ -38,7 +38,7 @@ export async function checkPromises(): Promise<JobResult> {
 /** Local stand-in for the n8n Gmail workflow: drafts and logs reminders without sending any email. */
 export async function dispatchRemindersLocally(): Promise<JobResult> {
   try {
-    const context = getRequestContext(); requireManager(context);
+    const context = await getSessionContext(); requireManager(context);
     const queue = (await repository.listActions(context.companyId)).filter((action) => action.actionType === "reminder" && (action.status === "pending" || action.status === "approved")).slice(0, 10);
     const lines: string[] = [];
     for (const action of queue) {
@@ -54,7 +54,7 @@ export async function dispatchRemindersLocally(): Promise<JobResult> {
 
 export async function simulateReply(formData: FormData): Promise<JobResult> {
   try {
-    const context = getRequestContext(); requireManager(context);
+    const context = await getSessionContext(); requireManager(context);
     const caseId = String(formData.get("caseId") || "");
     const body = String(formData.get("body") || "").trim();
     if (!caseId || !body) throw new Error("Choose a case and write a reply");

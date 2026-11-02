@@ -16,7 +16,7 @@ export function humanizeEvent(eventType: string) {
 export function ActivityFeed({ events, empty = "No activity recorded yet." }: { events: AuditEvent[]; empty?: string }) {
   if (events.length === 0) return <EmptyState icon={History} title={empty} body="Every automated and human action is written to an append-only audit log." />;
   return (
-    <ol className="divide-y divide-line/70">
+    <ol className="stagger-in divide-y divide-line/70">
       {events.map((event) => {
         const actor = ACTOR[event.actorType];
         const Icon = actor.icon;

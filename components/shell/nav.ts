@@ -1,4 +1,4 @@
-import { Bot, Building2, FileUp, Gauge, HandCoins, Inbox, ListChecks, Settings2, ShieldCheck, Workflow } from "lucide-react";
+import { BookOpen, Bot, Building2, CalendarCheck, FileUp, Gauge, HandCoins, ListChecks, Settings2, ShieldCheck, Workflow } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export type NavCountKey = "approvals" | "review" | "attention";
@@ -6,21 +6,22 @@ export interface NavItem { href: string; label: string; icon: LucideIcon; count?
 export interface NavGroup { label: string; items: NavItem[] }
 
 export const NAV: NavGroup[] = [
-  { label: "Collect", items: [
-    { href: "/dashboard", label: "Overview", icon: Gauge },
-    { href: "/cases", label: "Cases", icon: ListChecks, count: "attention" },
-    { href: "/approvals", label: "Approvals", icon: ShieldCheck, count: "approvals" },
-    { href: "/promises", label: "Promises", icon: Inbox },
+  { label: "Get paid", items: [
+    { href: "/dashboard", label: "Today", icon: Gauge },
+    { href: "/cases", label: "Unpaid bills", icon: ListChecks, count: "attention" },
+    { href: "/approvals", label: "Needs you", icon: ShieldCheck, count: "approvals" },
+    { href: "/promises", label: "Pay dates", icon: CalendarCheck },
   ] },
-  { label: "Reconcile", items: [
-    { href: "/payments", label: "Payments", icon: HandCoins, count: "review" },
+  { label: "Money", items: [
+    { href: "/payments", label: "Money in", icon: HandCoins, count: "review" },
     { href: "/customers", label: "Customers", icon: Building2 },
-    { href: "/imports", label: "Imports", icon: FileUp },
+    { href: "/imports", label: "Upload", icon: FileUp },
   ] },
-  { label: "Operate", items: [
+  { label: "Settings & help", items: [
     { href: "/ask", label: "Ask KindlyPay", icon: Bot },
-    { href: "/automation", label: "Automation", icon: Workflow },
-    { href: "/policy", label: "Policy & controls", icon: Settings2 },
+    { href: "/automation", label: "Auto reminders", icon: Workflow },
+    { href: "/policy", label: "Rules", icon: Settings2 },
+    { href: "/guide", label: "How it works", icon: BookOpen },
   ] },
 ];
 
