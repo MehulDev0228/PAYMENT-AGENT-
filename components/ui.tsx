@@ -1,6 +1,7 @@
 import Link from "next/link";
-import type { LucideIcon } from "lucide-react";
+import { ArrowUpRight, LoaderCircle, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { CountUp } from "./motion";
 
 export function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -8,20 +9,32 @@ export function cx(...classes: Array<string | false | null | undefined>) {
 
 export function LogoMark({ className = "size-7" }: { className?: string }) {
   return (
-    <svg viewBox="0 0 28 28" className={className} aria-hidden="true">
-      <rect width="28" height="28" rx="8" fill="currentColor" />
-      <path d="M8.5 19.5 14 8.5l5.5 11" fill="none" stroke="var(--logo-ink, #0a0c10)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M11 15.2h6" stroke="var(--logo-ink, #0a0c10)" strokeWidth="2.4" strokeLinecap="round" />
-      <circle cx="21.5" cy="6.5" r="2.5" fill="var(--glow)" />
+    <svg viewBox="0 0 48 48" className={className} aria-hidden="true">
+      {/* Two people whose arms meet to hold a coin; together they read as a smile. The arc is time ticking on the payment. */}
+      <circle cx="9" cy="10.5" r="4.8" fill="currentColor" />
+      <circle cx="39" cy="10.5" r="4.8" fill="currentColor" />
+      <path d="M9 20.5V27a15 15 0 0 0 12.2 14.7M39 20.5V27a15 15 0 0 1-12.2 14.7" fill="none" stroke="currentColor" strokeWidth="6.5" strokeLinecap="round" />
+      <circle className="logo-coin" cx="24" cy="27" r="7" fill="var(--logo-coin, var(--glow))" />
+      <path className="logo-sweep" pathLength={1} d="M24 15.5a11.5 11.5 0 0 1 10.6 7" fill="none" stroke="var(--logo-coin, var(--glow))" strokeWidth="2.2" strokeLinecap="round" />
     </svg>
+  );
+}
+
+export function Wordmark() {
+  // The dot of the "i" is the same coin the mark's two people hold.
+  return (
+    <span className="whitespace-nowrap">
+      <span className="sr-only">KindlyPay</span>
+      <span aria-hidden="true">k<span className="relative">ı<span className="absolute left-1/2 top-[0.13em] size-[0.22em] -translate-x-1/2 rounded-full bg-[var(--logo-coin,var(--glow))]" /></span>ndly<span className="opacity-55">pay</span></span>
+    </span>
   );
 }
 
 export function Logo({ tone = "light", href = "/" }: { tone?: "light" | "dark"; href?: string }) {
   return (
-    <Link href={href} className={cx("flex items-center gap-2.5 text-[17px] font-semibold tracking-[-0.04em]", tone === "light" ? "text-white" : "text-ink")} aria-label="AERA home">
-      <span className={tone === "light" ? "text-white [--logo-ink:#0a0c10]" : "text-ink [--logo-ink:#ffffff]"}><LogoMark /></span>
-      aera
+    <Link href={href} className={cx("logo-hover flex items-center gap-2.5 text-[17px] font-semibold tracking-[-0.04em]", tone === "light" ? "text-white" : "text-ink")} aria-label="KindlyPay home">
+      <LogoMark />
+      <Wordmark />
     </Link>
   );
 }
@@ -58,16 +71,36 @@ const TONE_CLASSES: Record<string, string> = {
   warning: "bg-[#fdf5df] text-[#8a5304] [--dot:#d99a0b]",
   neutral: "bg-[#eef0f3] text-[#4a515d] [--dot:#8a919e]",
 };
-const STATUS_LABELS: Record<string, string> = { payment_match_review_required: "needs review", awaiting_approval: "awaiting approval" };
+// Plain words for every status a person sees; the stored values stay as they are.
+const STATUS_LABELS: Record<string, string> = {
+  monitoring: "watching", due: "due soon", reminder_pending: "reminder due", reminder_sent: "reminded", customer_replied: "replied",
+  payment_promised: "pay date given", promise_missed: "missed pay date", escalated: "call needed", payment_received: "paid",
+  awaiting_approval: "needs you", executed: "sent", payment_match_review_required: "check match", unmatched: "not matched",
+  fulfilled: "paid on time", missed: "missed", cancelled: "replaced", pending: "waiting",
+};
 
-export function StatusBadge({ value, className }: { value: string; className?: string }) {
+export function StatusBadge({ value, label, className }: { value: string; label?: string; className?: string }) {
   const tone = TONE_CLASSES[STATUS_TONES[value] ?? "neutral"];
+  const text = label ?? STATUS_LABELS[value] ?? value.replaceAll("_", " ");
   return (
-    <span className={cx("inline-flex items-center gap-1.5 whitespace-nowrap rounded-full py-1 pl-2 pr-2.5 text-[11.5px] font-medium capitalize leading-none", tone, className)}>
+    <span className={cx("inline-flex items-center gap-1.5 whitespace-nowrap rounded-full py-1 pl-2 pr-2.5 text-[11.5px] font-medium leading-none", tone, className)}>
       <span className="size-1.5 rounded-full bg-[var(--dot)]" aria-hidden="true" />
-      {STATUS_LABELS[value] ?? value.replaceAll("_", " ")}
+      {text.charAt(0).toUpperCase() + text.slice(1)}
     </span>
   );
+}
+
+/** The arrow that opens a row's detail page; lights up when its row is hovered. */
+export function RowLink({ href, label }: { href: string; label: string }) {
+  return (
+    <Link href={href} aria-label={label} className="inline-grid size-9 place-items-center rounded-lg text-muted transition-colors group-hover:bg-ink group-hover:text-white">
+      <ArrowUpRight size={16} className="transition-transform duration-200 group-hover:-translate-y-px group-hover:translate-x-px" aria-hidden="true" />
+    </Link>
+  );
+}
+
+export function Spinner({ size = 15 }: { size?: number }) {
+  return <LoaderCircle size={size} className="animate-spin" aria-hidden="true" />;
 }
 
 export function StatTile({ label, value, helper, icon: Icon, accent }: { label: string; value: string; helper?: ReactNode; icon?: LucideIcon; accent?: "danger" | "success" | "warning" | "brand" }) {
@@ -78,7 +111,7 @@ export function StatTile({ label, value, helper, icon: Icon, accent }: { label: 
         <p className="eyebrow">{label}</p>
         {Icon && <Icon size={16} className={accentClass} aria-hidden="true" />}
       </div>
-      <p className="tabular mt-5 text-[30px] font-medium leading-none tracking-[-0.04em] text-ink">{value}</p>
+      <p className="mt-5 text-[30px] font-medium leading-none tracking-[-0.04em] text-ink"><CountUp value={value} /></p>
       {helper && <p className="mt-2.5 text-[13px] text-muted">{helper}</p>}
     </article>
   );
@@ -97,7 +130,7 @@ export function SectionTitle({ title, helper, action }: { title: string; helper?
 }
 
 export function TextLink({ href, children }: { href: string; children: ReactNode }) {
-  return <Link href={href} className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-[13px] font-medium text-ink transition-colors hover:bg-black/[0.04]">{children}</Link>;
+  return <Link href={href} className="group inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-[13px] font-medium text-ink transition-colors hover:bg-black/[0.04] [&_svg]:transition-transform [&_svg]:duration-200 hover:[&_svg]:-translate-y-px hover:[&_svg]:translate-x-px">{children}</Link>;
 }
 
 export function EmptyState({ icon: Icon, title, body }: { icon: LucideIcon; title: string; body?: string }) {

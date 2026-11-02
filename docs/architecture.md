@@ -1,4 +1,4 @@
-# AERA V1 architecture
+# KindlyPay V1 architecture
 
 ## Boundaries
 
@@ -8,9 +8,9 @@
   - `reply-outcome.ts`: maps a reply classification to the permitted operational outcome.
   - `state-machine.ts`: allowed case transitions.
   - `case-views.ts`: named queue views shared by UI and API.
-- `lib/data`: tenant-scoped, async repository contract (`repository.ts`). All rules live in `CollectionsEngine` (`engine.ts`), which runs synchronously on one company's in-memory working set. Two adapters host it: `mock-repository.ts` (synthetic seed, fixed business date) and `postgres-repository.ts` (PostgreSQL/Supabase), selected by `AERA_DATA_ADAPTER` in `index.ts`.
+- `lib/data`: tenant-scoped, async repository contract (`repository.ts`). All rules live in `CollectionsEngine` (`engine.ts`), which runs synchronously on one company's in-memory working set. Two adapters host it: `mock-repository.ts` (synthetic seed, fixed business date) and `postgres-repository.ts` (PostgreSQL/Supabase), selected by `KINDLYPAY_DATA_ADAPTER` in `index.ts`.
 - `lib/ai`: replaceable language adapter. It drafts communications from verified facts and classifies replies. It never computes balances or decides outcomes.
-- `lib/agent`: read-only question router for Ask AERA. Each answer names the tool that produced it.
+- `lib/agent`: read-only question router for Ask KindlyPay. Each answer names the tool that produced it.
 - `app/api`: company-scoped REST endpoints, including the automation endpoints n8n calls.
 - `app/(marketing)`: public product site.
 - `app/(workspace)`: authenticated workspace shell and pages. Server components read the repository directly. Mutations go through API routes (approvals, imports, payment review) or server actions (automation console).
@@ -41,4 +41,4 @@ Local development uses the generated fictional dataset through the mock adapter 
 
 ## Design system
 
-See `design-system/aera-payment-collection-agent/MASTER.md`. Tokens live in `app/globals.css` (hex for CSS, RGB channels for Tailwind opacity) and are mapped in `tailwind.config.ts`. Shared primitives are in `components/ui.tsx`; the workspace shell is in `components/shell/`.
+See `design-system/kindlypay-payment-collection-agent/MASTER.md`. Tokens live in `app/globals.css` (hex for CSS, RGB channels for Tailwind opacity) and are mapped in `tailwind.config.ts`. Shared primitives are in `components/ui.tsx`; the workspace shell is in `components/shell/`.

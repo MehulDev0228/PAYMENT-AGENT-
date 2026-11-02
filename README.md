@@ -1,6 +1,6 @@
-# AERA: Payment Collection Agent (V1)
+# KindlyPay: Payment Collection Agent (V1)
 
-Auditable accounts-receivable operations. AERA monitors every invoice, sends routine reminders, records customer promises, verifies them against bank files and reconciles payments, while every financial decision stays with a person.
+Auditable accounts-receivable operations. KindlyPay monitors every invoice, sends routine reminders, records customer promises, verifies them against bank files and reconciles payments, while every financial decision stays with a person.
 
 The local build runs on a deterministic, fictional dataset (200 customers, 1,000 invoices, 560+ payments, an ambiguous bank entry, collection cases, promises and approvals) and needs no external services.
 
@@ -50,7 +50,7 @@ The invoice is settled, the promise is marked kept, the case closes and each ste
 
 ## Design decisions
 
-- **Rules decide, AI describes.** The language model only drafts reminder text and classifies replies. `lib/domain/reply-outcome.ts` deterministically maps a classification to what AERA may do. Disputes, extensions and plan requests always go to a person, even if the classifier did not flag them, and low-confidence results never act automatically.
+- **Rules decide, AI describes.** The language model only drafts reminder text and classifies replies. `lib/domain/reply-outcome.ts` deterministically maps a classification to what KindlyPay may do. Disputes, extensions and plan requests always go to a person, even if the classifier did not flag them, and low-confidence results never act automatically.
 - **A promise is kept when the money is.** A customer saying they paid never closes a case. Only a matched payment does.
 - **Idempotency.** Replies are de-duplicated on the external message id. The daily monitor creates at most one action per invoice and policy step, and never stacks a second open decision on a case. Payment imports reject duplicate references.
 - **Guarded state changes.** Case status moves only along `lib/domain/state-machine.ts`.
@@ -62,22 +62,29 @@ The invoice is settled, the promise is marked kept, the case closes and each ste
 | Variable | Effect |
 | --- | --- |
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | Use the Responses API for drafting and classification instead of the local deterministic fallback |
-| `AERA_INTERNAL_API_TOKEN` | When set, `/api/automation/*` and the execution callback require `Authorization: Bearer <token>` (used by n8n). The workspace's automation console uses server actions and is unaffected |
-| `AERA_DEV_COMPANY_ID` | Company used for unauthenticated local requests |
-| `AERA_DATA_ADAPTER`, `DATABASE_URL` | `postgres` persists everything to PostgreSQL/Supabase; `mock` (default) keeps the in-memory demo |
+| `KINDLYPAY_INTERNAL_API_TOKEN` | When set, `/api/automation/*` and the execution callback require `Authorization: Bearer <token>` (used by n8n). The workspace's automation console uses server actions and is unaffected |
+| `KINDLYPAY_SESSION_SECRET` | Signs sign-in sessions. At least 32 characters; required in production |
+| `KINDLYPAY_DEMO_LOGIN` | `off` removes the one-click demo workspace from the sign-in page |
+| `KINDLYPAY_DATA_ADAPTER`, `DATABASE_URL` | `postgres` persists everything to PostgreSQL/Supabase; `mock` (default) keeps the in-memory demo |
+
+## Sign-in
+
+People create an account at `/sign-up`: it makes a new, empty company with the default reminder rules and signs them in. Passwords are stored only as scrypt hashes (`public.accounts`, migration `004`); sessions are a signed, httpOnly cookie. `proxy.ts` sends anyone without a session to `/sign-in`, answers API calls with 401, and only trusts `x-company-id` on automation endpoints that carry `KINDLYPAY_INTERNAL_API_TOKEN` (n8n). `/api/auth/demo` opens the fictional demo company in one click. In demo mode (`mock` adapter) accounts and their data live in memory and reset when the server restarts.
+
+New workspaces get a getting-started panel and a guided tour on first visit; `/guide` explains the product in plain words.
 
 ## Persisting to Supabase / PostgreSQL
 
-1. Put `DATABASE_URL` (Supabase: Project Settings → Database → connection string) and `AERA_DATA_ADAPTER=postgres` in `.env.local`.
+1. Put `DATABASE_URL` (Supabase: Project Settings → Database → connection string) and `KINDLYPAY_DATA_ADAPTER=postgres` in `.env.local`.
 2. Apply the schema: `npm run db:migrate` (safe to re-run; a database where `001_initial.sql` was pasted into the SQL editor is detected).
-3. Create your company and its default policy ladder: `npm run db:create-company -- "Your Company Pvt Ltd" --timezone Asia/Kolkata`, then set the printed `AERA_DEV_COMPANY_ID`. Or load the demo dataset with `npm run db:seed-demo`.
+3. Sign up at `/sign-up` to create your company, or load the demo dataset with `npm run db:seed-demo` for the one-click demo.
 4. `npm run dev`. Imports, approvals, payment matches, replies and automation runs are now saved, with every change in `audit_events`.
 
 Each write runs in a transaction under a per-company lock and stores only what changed; see `docs/architecture.md`. n8n: see `n8n/README.md`; workflows stay inactive until credentials are supplied. Gmail is connected inside n8n, never in this app.
 
 ## Not in V1 (next phase)
 
-- Real authentication. The current request context is a demo identity taken from headers or `AERA_DEV_COMPANY_ID`.
+- Billing for the plans on the pricing section, invitations for more team members, and password reset by email.
 - Editable policy ladder and per-customer policy overrides.
 - Sending email directly from the app. Dispatch from the console is simulated and logged only.
 - Partial-payment allocation across several invoices from one bank entry.

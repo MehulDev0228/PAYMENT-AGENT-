@@ -15,7 +15,7 @@ const PRIORITY_RANK = { critical: 3, high: 2, medium: 1, low: 0 } as const;
 const OPEN_INVOICE = (invoice: Invoice) => invoice.status !== "cancelled" && invoice.amountOutstanding > 0;
 
 type Actor = { type: AuditEvent["actorType"]; id?: string };
-const AERA: Actor = { type: "aera" };
+const KINDLYPAY: Actor = { type: "kindlypay" };
 const SYSTEM: Actor = { type: "system" };
 
 /**
@@ -255,10 +255,12 @@ export class CollectionsEngine {
   importInvoices(companyId: string, rows: InvoiceImportRow[], userId?: string): ImportResult {
     const result: ImportResult = { imported: 0, rejected: 0, reviewRequired: 0, errors: [] };
     rows.forEach((row, index) => {
-      if (!row.invoice_number || !row.customer_name || !row.customer_email || !row.invoice_date || !row.due_date || !row.amount || !row.currency) {
-        result.rejected += 1; result.errors.push({ row: index + 2, message: "Missing required invoice field" }); return;
+      if (!row.invoice_number || !row.customer_email || !row.due_date || !row.amount) {
+        result.rejected += 1; result.errors.push({ row: index + 2, message: "Needs a bill number, customer email, amount due and due date" }); return;
       }
-      if (row.due_date < row.invoice_date) {
+      const invoiceDate = row.invoice_date || row.due_date;
+      const currency = row.currency || this.data.companies.find((item) => item.id === companyId)?.currency || "INR";
+      if (row.due_date < invoiceDate) {
         result.rejected += 1; result.errors.push({ row: index + 2, message: `Due date precedes invoice date for ${row.invoice_number}` }); return;
       }
       if (this.data.invoices.some((item) => item.companyId === companyId && item.invoiceNumber === row.invoice_number)) {
@@ -267,15 +269,15 @@ export class CollectionsEngine {
       let customer = this.data.customers.find((item) => item.companyId === companyId && ((row.customer_code && item.customerCode === row.customer_code) || item.email.toLowerCase() === row.customer_email.toLowerCase()));
       if (!customer) {
         customer = {
-          id: randomUUID(), companyId, customerCode: row.customer_code || `CUS-IMP-${this.data.customers.length + 1}`, name: row.customer_name,
+          id: randomUUID(), companyId, customerCode: row.customer_code || `CUS-IMP-${this.data.customers.length + 1}`, name: row.customer_name || nameFromEmail(row.customer_email),
           email: row.customer_email, phone: row.customer_phone, region: row.region, accountManager: row.account_manager, status: "active", createdAt: new Date().toISOString(),
         } satisfies Customer;
         this.data.customers.push(customer);
       }
       const amount = Number(row.amount);
       this.data.invoices.push({
-        id: randomUUID(), companyId, customerId: customer.id, invoiceNumber: row.invoice_number, invoiceDate: row.invoice_date, dueDate: row.due_date,
-        amount, currency: row.currency, amountPaid: 0, amountOutstanding: amount, status: new Date(row.due_date) < this.now ? "overdue" : "pending",
+        id: randomUUID(), companyId, customerId: customer.id, invoiceNumber: row.invoice_number, invoiceDate, dueDate: row.due_date,
+        amount, currency, amountPaid: 0, amountOutstanding: amount, status: new Date(row.due_date) < this.now ? "overdue" : "pending",
         source: "file_import", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       });
       result.imported += 1;
@@ -334,7 +336,7 @@ export class CollectionsEngine {
       if (!collectionCase) {
         collectionCase = { id: randomUUID(), companyId, invoiceId: invoice.id, customerId: invoice.customerId, status: "overdue", priority: priorityFor(overdue, invoice.amountOutstanding), daysOverdue: overdue, nextAction: "Evaluate collection policy", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
         this.data.cases.push(collectionCase);
-        this.audit(companyId, AERA, "case_opened", "collection_case", collectionCase.id, `${invoice.invoiceNumber} is ${overdue} days overdue`, { invoiceNumber: invoice.invoiceNumber, amountOutstanding: invoice.amountOutstanding });
+        this.audit(companyId, KINDLYPAY, "case_opened", "collection_case", collectionCase.id, `${invoice.invoiceNumber} is ${overdue} days overdue`, { invoiceNumber: invoice.invoiceNumber, amountOutstanding: invoice.amountOutstanding });
       }
       collectionCase.daysOverdue = overdue;
       collectionCase.priority = priorityFor(overdue, invoice.amountOutstanding);
@@ -349,12 +351,12 @@ export class CollectionsEngine {
         message: step.action === "reminder" ? `Send a ${step.tone} reminder for ${invoice.invoiceNumber}.` : `Review ${invoice.invoiceNumber}: ${overdue} days overdue, ${formatMoney(invoice.amountOutstanding, invoice.currency)} outstanding.`,
         reason: `Policy step "${step.id}" reached at ${overdue} days overdue`,
         dataSnapshot: { policyStepId: step.id, daysOverdue: overdue, amountOutstanding: invoice.amountOutstanding, tone: step.tone },
-        scheduledAt: this.today(), status: step.requiresHumanApproval ? "awaiting_approval" : "pending", createdBy: "aera", createdAt: new Date().toISOString(),
+        scheduledAt: this.today(), status: step.requiresHumanApproval ? "awaiting_approval" : "pending", createdBy: "kindlypay", createdAt: new Date().toISOString(),
       };
       this.data.actions.push(action); created.push(action);
-      this.advance(companyId, collectionCase, [step.action === "reminder" ? "reminder_pending" : "escalated"], AERA, action.reason);
+      this.advance(companyId, collectionCase, [step.action === "reminder" ? "reminder_pending" : "escalated"], KINDLYPAY, action.reason);
       collectionCase.nextAction = step.requiresHumanApproval ? "Human approval required" : "Generate and send reminder";
-      this.audit(companyId, AERA, "action_created", "collection_action", action.id, action.reason, action.dataSnapshot);
+      this.audit(companyId, KINDLYPAY, "action_created", "collection_action", action.id, action.reason, action.dataSnapshot);
     }
     this.audit(companyId, SYSTEM, "daily_monitor_run", "automation", "daily-monitor", `Reviewed ${candidates.length} overdue invoices; created ${created.length} actions`, { reviewed: candidates.length, created: created.length });
     return { reviewed: candidates.length, created: created.length, actions: created };
@@ -403,11 +405,11 @@ export class CollectionsEngine {
     const result: ReplyResult = { intent: classification.intent, caseId: collectionCase?.id, requiresHuman: outcome.requestApproval, confidence: classification.confidence, duplicate: false, outcome: outcome.nextAction };
     if (!collectionCase || !invoice) {
       result.outcome = "No open case matched this reply; left for manual triage";
-      this.audit(companyId, AERA, "reply_unmatched", "communication", messageId, result.outcome, { from: input.from, intent: classification.intent });
+      this.audit(companyId, KINDLYPAY, "reply_unmatched", "communication", messageId, result.outcome, { from: input.from, intent: classification.intent });
       return result;
     }
 
-    this.advance(companyId, collectionCase, outcome.caseStatus === "customer_replied" ? ["customer_replied"] : ["customer_replied", outcome.caseStatus], AERA, outcome.reason);
+    this.advance(companyId, collectionCase, outcome.caseStatus === "customer_replied" ? ["customer_replied"] : ["customer_replied", outcome.caseStatus], KINDLYPAY, outcome.reason);
     collectionCase.nextAction = outcome.nextAction;
     if (outcome.recordPromise && classification.promised_date) {
       for (const active of this.data.promises.filter((item) => item.invoiceId === invoice.id && item.status === "active")) { active.status = "cancelled"; active.updatedAt = at; }
@@ -415,12 +417,12 @@ export class CollectionsEngine {
       this.data.promises.push(promise);
       collectionCase.nextActionAt = promise.promisedDate;
       result.promiseId = promise.id;
-      this.audit(companyId, AERA, "promise_recorded", "collection_case", collectionCase.id, outcome.reason, { promiseId: promise.id, promisedDate: promise.promisedDate, promisedAmount: promise.promisedAmount, confidence: classification.confidence });
+      this.audit(companyId, KINDLYPAY, "promise_recorded", "collection_case", collectionCase.id, outcome.reason, { promiseId: promise.id, promisedDate: promise.promisedDate, promisedAmount: promise.promisedAmount, confidence: classification.confidence });
     }
     if (outcome.requestApproval) {
       result.approvalActionId = this.requestApproval(companyId, collectionCase, invoice, outcome.reason, { intent: classification.intent, sourceMessageId: messageId, confidence: classification.confidence }).id;
     }
-    this.audit(companyId, AERA, "reply_processed", "collection_case", collectionCase.id, outcome.reason, { intent: classification.intent, confidence: classification.confidence, messageId });
+    this.audit(companyId, KINDLYPAY, "reply_processed", "collection_case", collectionCase.id, outcome.reason, { intent: classification.intent, confidence: classification.confidence, messageId });
     return result;
   }
 
@@ -480,10 +482,10 @@ export class CollectionsEngine {
     const action: CollectionAction = {
       id: randomUUID(), companyId, collectionCaseId: collectionCase.id, invoiceId: invoice.id, customerId: invoice.customerId, actionType: "escalation", channel: "internal",
       message: `Decide next step for ${invoice.invoiceNumber} (${formatMoney(invoice.amountOutstanding, invoice.currency)} outstanding).`, reason,
-      dataSnapshot: { ...snapshot, amountOutstanding: invoice.amountOutstanding, daysOverdue: collectionCase.daysOverdue }, status: "awaiting_approval", createdBy: "aera", createdAt: new Date().toISOString(),
+      dataSnapshot: { ...snapshot, amountOutstanding: invoice.amountOutstanding, daysOverdue: collectionCase.daysOverdue }, status: "awaiting_approval", createdBy: "kindlypay", createdAt: new Date().toISOString(),
     };
     this.data.actions.push(action);
-    this.audit(companyId, AERA, "approval_requested", "collection_action", action.id, reason, { collectionCaseId: collectionCase.id, ...snapshot });
+    this.audit(companyId, KINDLYPAY, "approval_requested", "collection_action", action.id, reason, { collectionCaseId: collectionCase.id, ...snapshot });
     return action;
   }
 
@@ -494,6 +496,12 @@ export class CollectionsEngine {
   private invoicesOf(companyId: string) { return this.data.invoices.filter((item) => item.companyId === companyId); }
   private caseById(id: string) { return this.data.cases.find((item) => item.id === id); }
   private indexById<T extends { id: string }>(items: T[]) { return new Map(items.map((item) => [item.id, item])); }
+}
+
+/** "accounts@bluebird-foods.co.in" → "Bluebird Foods", for bills uploaded without a customer name. */
+function nameFromEmail(email: string): string {
+  const label = email.split("@")[1]?.split(".")[0] ?? email;
+  return label.split(/[-_]+/).filter(Boolean).map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ") || email;
 }
 
 function sum(values: number[]) { return values.reduce((total, value) => total + value, 0); }

@@ -2,14 +2,15 @@ import type { ApprovalItem, AuditEvent, CaseDetail, CaseFilter, CaseListItem, Co
 import type { ReplyClassificationInput } from "@/lib/domain/reply-outcome";
 import type { CollectionsEngine } from "./engine";
 
+/** One unpaid bill. Only the first four fields are required; the rest are filled in when missing. */
 export interface InvoiceImportRow {
   invoice_number: string;
-  customer_name: string;
   customer_email: string;
-  invoice_date: string;
-  due_date: string;
   amount: number;
-  currency: string;
+  due_date: string;
+  customer_name?: string;
+  invoice_date?: string;
+  currency?: string;
   customer_code?: string;
   customer_phone?: string;
   region?: string;
@@ -29,6 +30,8 @@ export interface ImportResult {
   rejected: number;
   reviewRequired: number;
   errors: Array<{ row: number; message: string }>;
+  /** Columns in the file that KindlyPay does not use; they were dropped and never stored. */
+  ignoredColumns?: string[];
 }
 
 export interface ReplyResult {
@@ -55,7 +58,11 @@ export interface Paged<T> {
   pageSize: number;
 }
 
-export interface AeraRepository {
+export interface NewCompany { id: string; name: string; currency?: string; timezone?: string }
+
+export interface KindlyPayRepository {
+  /** Creates an empty company with the default collection policy, ready for its first import. */
+  createCompany(input: NewCompany): Promise<void>;
   /** The business date the repository evaluates rules against (fixed in demo mode). */
   today(companyId: string): Promise<string>;
   overview(companyId: string): Promise<CollectionOverview>;
@@ -96,8 +103,9 @@ export interface AuditFilter { entityId?: string; entityType?: AuditEvent["entit
 export type EngineRunner = <T>(companyId: string, mode: "read" | "write", fn: (engine: CollectionsEngine) => T) => Promise<T>;
 
 /** Builds the repository contract on top of a storage adapter's runner, so every adapter exposes identical behaviour. */
-export function createRepository(run: EngineRunner, listAudit: AeraRepository["listAudit"]): AeraRepository {
+export function createRepository(run: EngineRunner, listAudit: KindlyPayRepository["listAudit"], createCompany: KindlyPayRepository["createCompany"]): KindlyPayRepository {
   return {
+    createCompany,
     today: (c) => run(c, "read", (e) => e.today()),
     overview: (c) => run(c, "read", (e) => e.overview(c)),
     policy: (c) => run(c, "read", (e) => e.policy(c)),

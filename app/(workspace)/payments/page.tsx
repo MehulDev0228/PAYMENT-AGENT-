@@ -3,20 +3,20 @@ import Link from "next/link";
 import { FileUp, HandCoins } from "lucide-react";
 import { PaymentReview } from "@/components/payment-review";
 import { EmptyState, PageHeader, Pagination, StatusBadge, Tabs, formatDate } from "@/components/ui";
-import { getRequestContext } from "@/lib/auth";
+import { getSessionContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
 import { formatMoney } from "@/lib/domain/money";
 import type { Payment } from "@/lib/domain/types";
 
-export const metadata: Metadata = { title: "Payments" };
+export const metadata: Metadata = { title: "Money in" };
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 30;
-const VIEWS: Array<{ key: "all" | Payment["matchStatus"]; label: string }> = [{ key: "all", label: "All" }, { key: "matched", label: "Matched" }, { key: "payment_match_review_required", label: "Needs review" }, { key: "unmatched", label: "Unmatched" }];
+const VIEWS: Array<{ key: "all" | Payment["matchStatus"]; label: string }> = [{ key: "all", label: "All" }, { key: "matched", label: "Matched" }, { key: "payment_match_review_required", label: "Check match" }, { key: "unmatched", label: "Not matched" }];
 
 export default async function PaymentsPage({ searchParams }: { searchParams: Promise<{ status?: string; page?: string }> }) {
   const params = await searchParams;
-  const { companyId } = getRequestContext();
+  const { companyId } = await getSessionContext();
   const view = VIEWS.find((item) => item.key === params.status)?.key ?? "all";
   const all = await repository.listPayments(companyId);
   const review = all.filter((item) => item.matchStatus === "payment_match_review_required");
@@ -28,7 +28,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Reconciliation" title="Every rupee, accounted for." muted="Ambiguous bank entries are never applied on a guess." actions={<Link href="/imports" className="btn-outline"><FileUp size={15} /> Import bank file</Link>} />
+      <PageHeader eyebrow="Money in" title="Every rupee, matched to its bill." muted="If a payment could fit two bills, it waits for you. No guessing." actions={<Link href="/imports" className="btn-outline"><FileUp size={15} /> Upload bank statement</Link>} />
 
       {review.length > 0 && (
         <section aria-label="Payments needing review" className="space-y-4">
@@ -56,13 +56,13 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
         {rows.length === 0 ? <EmptyState icon={HandCoins} title="No payments in this view" /> : (
           <div className="scrollbar overflow-x-auto">
             <table className="table-base min-w-[820px]">
-              <thead><tr><th scope="col">Reference</th><th scope="col">Date</th><th scope="col">Applied to</th><th scope="col" className="text-right">Amount</th><th scope="col">Match</th><th scope="col">Notes</th></tr></thead>
+              <thead><tr><th scope="col">Reference</th><th scope="col">Date</th><th scope="col">Matched to</th><th scope="col" className="text-right">Amount</th><th scope="col">Status</th><th scope="col">Notes</th></tr></thead>
               <tbody>
                 {rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((payment) => (
                   <tr key={payment.id}>
                     <td className="font-mono text-[12px]">{payment.paymentReference}</td>
                     <td className="tabular text-muted">{formatDate(payment.paymentDate)}</td>
-                    <td>{payment.invoiceNumber ? <><span className="block font-medium">{payment.customerName}</span><span className="font-mono text-[11.5px] text-muted">{payment.invoiceNumber}</span></> : <span className="text-muted">Not applied</span>}</td>
+                    <td>{payment.invoiceNumber ? <><span className="block font-medium">{payment.customerName}</span><span className="font-mono text-[11.5px] text-muted">{payment.invoiceNumber}</span></> : <span className="text-muted">Not matched yet</span>}</td>
                     <td className="tabular text-right font-medium">{formatMoney(payment.amount)}</td>
                     <td><StatusBadge value={payment.matchStatus} /></td>
                     <td className="max-w-[260px] truncate text-[13px] text-muted">{payment.matchNotes}</td>

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowUpRight, Building2, Search } from "lucide-react";
-import { EmptyState, PageHeader, Pagination } from "@/components/ui";
-import { getRequestContext } from "@/lib/auth";
+import { Building2, Search } from "lucide-react";
+import { EmptyState, PageHeader, Pagination, RowLink } from "@/components/ui";
+import { getSessionContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
 import { formatMoney } from "@/lib/domain/money";
 
@@ -13,7 +13,7 @@ const PAGE_SIZE = 25;
 
 export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string }> }) {
   const params = await searchParams;
-  const { companyId } = getRequestContext();
+  const { companyId } = await getSessionContext();
   const q = params.q?.trim() || undefined;
   const all = await repository.listCustomers(companyId, q);
   const pageCount = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
@@ -22,9 +22,9 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Accounts" title="Who owes what." muted="Ranked by overdue exposure." />
+      <PageHeader eyebrow="Customers" title="Who owes what." muted="Most overdue first." />
       <div className="panel overflow-hidden">
-        <form action="/customers" role="search" className="flex flex-wrap gap-2 border-b border-line p-4">
+        <form action="/customers" role="search" className="flex flex-wrap gap-2 border-b border-line px-5 py-3">
           <label className="relative flex-1 sm:max-w-sm">
             <span className="sr-only">Search customers</span>
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
@@ -36,7 +36,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
         {all.length === 0 ? <EmptyState icon={Building2} title="No customers match" /> : (
           <div className="scrollbar overflow-x-auto">
             <table className="table-base min-w-[860px]">
-              <thead><tr><th scope="col">Customer</th><th scope="col">Region · manager</th><th scope="col" className="text-right">Outstanding</th><th scope="col" className="text-right">Overdue</th><th scope="col" className="text-right">Oldest</th><th scope="col" className="text-right">Open cases</th><th scope="col"><span className="sr-only">Open</span></th></tr></thead>
+              <thead><tr><th scope="col">Customer</th><th scope="col">Region · handled by</th><th scope="col" className="text-right">Unpaid</th><th scope="col" className="text-right">Late</th><th scope="col" className="text-right">Oldest</th><th scope="col" className="text-right">Unpaid bills</th><th scope="col"><span className="sr-only">Open</span></th></tr></thead>
               <tbody>
                 {all.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((customer) => (
                   <tr key={customer.id} className="group">
@@ -46,7 +46,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                     <td className="tabular text-right font-medium">{customer.overdue ? <span className="text-danger">{formatMoney(customer.overdue)}</span> : <span className="text-muted">—</span>}</td>
                     <td className="tabular text-right text-muted">{customer.maxDaysOverdue ? `${customer.maxDaysOverdue}d` : "—"}</td>
                     <td className="tabular text-right">{customer.openCases}</td>
-                    <td className="w-12 text-right"><Link href={`/customers/${customer.id}`} aria-label={`Open ${customer.name}`} className="inline-grid size-9 place-items-center rounded-lg text-muted transition-colors group-hover:bg-ink group-hover:text-white"><ArrowUpRight size={16} /></Link></td>
+                    <td className="w-12 text-right"><RowLink href={`/customers/${customer.id}`} label={`Open ${customer.name}`} /></td>
                   </tr>
                 ))}
               </tbody>

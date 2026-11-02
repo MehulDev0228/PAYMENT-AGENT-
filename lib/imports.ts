@@ -31,8 +31,52 @@ function csvToObjects(input: string): Record<string, unknown>[] {
 }
 
 export function normalizeHeaders(row: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(row).map(([key, value]) => [key.trim().toLowerCase().replace(/[\s-]+/g, "_"), value]));
+  return Object.fromEntries(Object.entries(row).map(([key, value]) => [normalizeKey(key), value]));
 }
+
+const normalizeKey = (key: string) => key.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+
+/**
+ * Maps the column names people actually use ("Bill No.", "Amount due", "Email") onto KindlyPay's fields,
+ * and keeps only those. Anything else in the sheet (rates, quantities, cash columns) is dropped before
+ * a row reaches the database, and reported back as ignored.
+ */
+export function pickColumns(rows: Record<string, unknown>[], aliases: Record<string, string[]>): { rows: Record<string, unknown>[]; ignored: string[] } {
+  const lookup = new Map(Object.entries(aliases).flatMap(([field, names]) => [field, ...names].map((name) => [normalizeKey(name), field] as const)));
+  const headers = Object.keys(rows[0] ?? {});
+  const ignored = headers.filter((header) => header.trim() && !lookup.has(normalizeKey(header)));
+  return {
+    ignored,
+    rows: rows.map((row) => {
+      const picked: Record<string, unknown> = {};
+      for (const [header, value] of Object.entries(row)) {
+        const field = lookup.get(normalizeKey(header));
+        if (field && picked[field] === undefined && value !== "") picked[field] = typeof value === "string" ? value.trim() : value;
+      }
+      return picked;
+    }),
+  };
+}
+
+export const INVOICE_COLUMNS: Record<string, string[]> = {
+  invoice_number: ["bill_number", "bill_no", "bill", "invoice_no", "invoice", "invoice_id"],
+  customer_email: ["email", "customer_mail", "billing_email", "email_id"],
+  amount: ["amount_due", "due_amount", "balance", "outstanding", "amount_outstanding", "unpaid", "total"],
+  due_date: ["due", "due_on", "payment_due"],
+  customer_name: ["customer", "name", "party", "party_name", "client"],
+  invoice_date: ["bill_date", "date"],
+  currency: [],
+  customer_code: ["code", "party_code"],
+  customer_phone: ["phone", "mobile"],
+};
+
+export const PAYMENT_COLUMNS: Record<string, string[]> = {
+  payment_reference: ["reference", "utr", "ref", "transaction_id", "txn_id"],
+  amount: ["amount_received", "credit", "received"],
+  payment_date: ["date", "value_date", "received_on"],
+  invoice_number: ["bill_number", "bill_no", "invoice_no", "invoice", "bill"],
+  customer_code: ["code", "party_code"],
+};
 
 export function asNumber(value: unknown): number {
   if (typeof value === "number") return value;

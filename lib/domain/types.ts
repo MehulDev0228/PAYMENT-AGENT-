@@ -107,7 +107,7 @@ export interface CollectionAction {
   scheduledAt?: string;
   executedAt?: string;
   status: ActionStatus;
-  createdBy: "aera" | "human" | "system";
+  createdBy: "kindlypay" | "human" | "system";
   approvedBy?: string;
   createdAt: string;
 }
@@ -183,7 +183,7 @@ export interface CaseDetail extends CaseListItem {
 export interface AuditEvent {
   id: string;
   companyId: string;
-  actorType: "aera" | "human" | "system";
+  actorType: "kindlypay" | "human" | "system";
   actorId?: string;
   eventType: string;
   entityType: "invoice" | "payment" | "collection_case" | "collection_action" | "payment_promise" | "communication" | "import" | "automation";
