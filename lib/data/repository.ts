@@ -55,7 +55,7 @@ export interface Paged<T> {
   pageSize: number;
 }
 
-export interface AeraRepository {
+export interface KindlyPayRepository {
   /** The business date the repository evaluates rules against (fixed in demo mode). */
   today(companyId: string): Promise<string>;
   overview(companyId: string): Promise<CollectionOverview>;
@@ -96,7 +96,7 @@ export interface AuditFilter { entityId?: string; entityType?: AuditEvent["entit
 export type EngineRunner = <T>(companyId: string, mode: "read" | "write", fn: (engine: CollectionsEngine) => T) => Promise<T>;
 
 /** Builds the repository contract on top of a storage adapter's runner, so every adapter exposes identical behaviour. */
-export function createRepository(run: EngineRunner, listAudit: AeraRepository["listAudit"]): AeraRepository {
+export function createRepository(run: EngineRunner, listAudit: KindlyPayRepository["listAudit"]): KindlyPayRepository {
   return {
     today: (c) => run(c, "read", (e) => e.today()),
     overview: (c) => run(c, "read", (e) => e.overview(c)),

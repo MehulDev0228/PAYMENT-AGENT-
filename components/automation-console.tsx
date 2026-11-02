@@ -63,7 +63,7 @@ export function AutomationConsole({ replyCases }: { replyCases: Array<{ id: stri
           <span className="font-mono text-[11px] text-muted">04</span>
         </div>
         <h2 className="mt-5 text-[17px] font-medium tracking-[-0.025em]">Reply processing</h2>
-        <p className="mt-1.5 text-[13.5px] leading-6 text-muted">Simulate an inbound customer email. The classifier describes it; deterministic rules decide what AERA may do.</p>
+        <p className="mt-1.5 text-[13.5px] leading-6 text-muted">Simulate an inbound customer email. The classifier describes it; deterministic rules decide what KindlyPay may do.</p>
         <form className="mt-4 space-y-3" action={(formData) => run("reply", () => simulateReply(formData))}>
           <label className="block">
             <span className="eyebrow">Case</span>

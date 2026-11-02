@@ -9,7 +9,7 @@ type Message = { role: "user" | "assistant"; text: string; tool?: string; table?
 
 const PROMPTS = ["How much is currently overdue?", "Which customers have the highest exposure?", "Which payment promises were missed?", "What decisions are waiting for approval?", "Show the aging breakdown", "What is the status of INV-1042?"];
 
-export function AskAera() {
+export function AskKindlyPay() {
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [busy, setBusy] = useState(false);
@@ -42,7 +42,7 @@ export function AskAera() {
             <div className="flex h-full flex-col items-center justify-center py-16 text-center">
               <span className="grid size-12 place-items-center rounded-2xl bg-ink text-glow"><Bot size={22} aria-hidden="true" /></span>
               <h2 className="mt-5 text-[22px] font-medium tracking-[-0.035em]">Ask a factual question.<span className="block text-muted">Get an answer with its source.</span></h2>
-              <p className="mt-3 max-w-md text-[13.5px] leading-6 text-muted">Every answer comes from a named, read-only query over your receivables. AERA does not guess numbers and makes no financial decisions here.</p>
+              <p className="mt-3 max-w-md text-[13.5px] leading-6 text-muted">Every answer comes from a named, read-only query over your receivables. KindlyPay does not guess numbers and makes no financial decisions here.</p>
             </div>
           )}
           {messages.map((message, index) => (
@@ -67,8 +67,8 @@ export function AskAera() {
         </div>
         <form onSubmit={submit} className="border-t border-line p-3 md:p-4">
           <div className="flex items-center gap-2 rounded-2xl border border-line bg-canvas p-1.5 pl-4 transition-colors focus-within:border-ink">
-            <label className="sr-only" htmlFor="aera-question">Question about receivables</label>
-            <input id="aera-question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={500} className="min-h-10 flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#8a909c]" placeholder="How much is overdue by more than 30 days?" />
+            <label className="sr-only" htmlFor="kindlypay-question">Question about receivables</label>
+            <input id="kindlypay-question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={500} className="min-h-10 flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#8a909c]" placeholder="How much is overdue by more than 30 days?" />
             <button disabled={busy || question.trim().length < 3} aria-label="Send question" className="grid size-10 place-items-center rounded-xl bg-ink text-white transition-opacity disabled:opacity-30"><ArrowUp size={18} /></button>
           </div>
         </form>
@@ -82,7 +82,7 @@ export function AskAera() {
         </section>
         <section className="rounded-2xl bg-lime p-5 text-lime-ink">
           <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] opacity-70">Data boundary</p>
-          <p className="mt-3 text-[14px] leading-6">Only the minimum query result reaches the answer layer. AERA never sends your whole ledger to a model.</p>
+          <p className="mt-3 text-[14px] leading-6">Only the minimum query result reaches the answer layer. KindlyPay never sends your whole ledger to a model.</p>
         </section>
       </aside>
     </div>

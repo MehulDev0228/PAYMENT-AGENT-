@@ -6,8 +6,8 @@ const sans = Geist({ subsets: ["latin"], variable: "--font-sans", display: "swap
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
 
 export const metadata: Metadata = {
-  title: { default: "AERA: Accounts receivable, on autopilot", template: "%s · AERA" },
-  description: "AERA monitors every invoice, follows up with customers, verifies promises and reconciles payments, while every financial decision stays with your team.",
+  title: { default: "KindlyPay: Accounts receivable, on autopilot", template: "%s · KindlyPay" },
+  description: "KindlyPay monitors every invoice, follows up with customers, verifies promises and reconciles payments, while every financial decision stays with your team.",
 };
 
 export const viewport: Viewport = { themeColor: "#0a0c10" };

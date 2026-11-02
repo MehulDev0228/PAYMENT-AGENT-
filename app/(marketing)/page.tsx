@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Ban, Bot, Check, CheckCircle2, Mail, MessageSquareReply, Plus, X } from "lucide-react";
 import { SiteNav } from "@/components/marketing/site-nav";
-import { LogoMark, cx, formatDate } from "@/components/ui";
+import { LogoMark, Wordmark, cx, formatDate } from "@/components/ui";
 import { repository } from "@/lib/data";
 import { DEMO_COMPANY_ID } from "@/lib/data/seed";
 import { formatMoney } from "@/lib/domain/money";
@@ -9,14 +9,14 @@ import { formatMoney } from "@/lib/domain/money";
 export const dynamic = "force-dynamic";
 
 const STEPS = [
-  ["Watch every invoice.", "AERA reads your open invoices each morning and measures them against your collection policy. Nothing slips because someone was on leave."],
+  ["Watch every invoice.", "KindlyPay reads your open invoices each morning and measures them against your collection policy. Nothing slips because someone was on leave."],
   ["Write like your team would.", "Routine reminders go out in your tone, built only from verified invoice facts. No invented fees, no threats, no surprises."],
   ["Hear what customers say.", "Replies are read and classified. A promise to pay becomes a dated record. A dispute or a plan request goes straight to a person."],
   ["Prove it with the bank.", "Bank files are matched to invoices deterministically. A promise is only kept when the money is, and ambiguous payments wait for review."],
 ];
 
 const FAQ = [
-  ["Does AERA ever decide about money?", "No. Discounts, waivers, payment plans, term changes, disputes, legal steps and account suspension always go to a person. The software has no setting that changes this."],
+  ["Does KindlyPay ever decide about money?", "No. Discounts, waivers, payment plans, term changes, disputes, legal steps and account suspension always go to a person. The software has no setting that changes this."],
   ["Where do the numbers come from?", "From your ledger and bank files. Balances, ageing, matching and promise outcomes are computed by deterministic rules. The language model only drafts wording and reads replies."],
   ["Does it send email from our domain?", "Yes, through your own Gmail workspace, connected inside n8n. The app itself never holds your mail credentials."],
   ["What happens when a payment could match two invoices?", "It is held as needs review, with ranked candidates and a reason for each. A reviewer applies it with one click, and the decision is logged."],
@@ -47,7 +47,7 @@ export default async function LandingPage() {
               <span className="block text-balance text-white/55">Every rupee accounted&nbsp;for.</span>
             </h1>
             <p className="animate-rise mx-auto mt-7 max-w-[560px] text-[16px] leading-7 text-white/80 [animation-delay:160ms] md:text-[17px]">
-              AERA watches your receivables, writes to customers, records what they promise and checks it against the bank. Your team only touches the decisions that need judgment.
+              KindlyPay watches your receivables, writes to customers, records what they promise and checks it against the bank. Your team only touches the decisions that need judgment.
             </p>
             <div className="animate-rise mt-9 flex flex-wrap items-center justify-center gap-3 [animation-delay:240ms]">
               <Link href="/dashboard" className="btn-light min-h-12 px-5 text-[15px]">Open the live workspace <ArrowRight size={16} /></Link>
@@ -105,7 +105,7 @@ export default async function LandingPage() {
                 <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-white/45">Why finance teams trust it</p>
                 <h2 className="display mt-5 text-[36px] md:text-[54px]">No action from nowhere. <span className="text-white/45">Every step has a reason on record.</span></h2>
               </div>
-              <p className="max-w-sm text-[15px] leading-7 text-white/60 md:justify-self-end">The ledger, the conversation, the promise and the decision stay together, so anyone can check why AERA did what it did.</p>
+              <p className="max-w-sm text-[15px] leading-7 text-white/60 md:justify-self-end">The ledger, the conversation, the promise and the decision stay together, so anyone can check why KindlyPay did what it did.</p>
             </div>
 
             <div className="mt-14 grid gap-4 md:grid-cols-2">
@@ -167,7 +167,7 @@ export default async function LandingPage() {
               <div className="mt-12 overflow-hidden rounded-[22px] border border-line bg-[#eceef1] p-2 shadow-[0_40px_100px_-40px_rgb(10_12_16/0.35)]">
                 <div className="flex items-center justify-between px-3 py-2">
                   <div className="flex gap-1.5" aria-hidden="true"><span className="size-2.5 rounded-full bg-[#d5d8de]" /><span className="size-2.5 rounded-full bg-[#d5d8de]" /><span className="size-2.5 rounded-full bg-[#d5d8de]" /></div>
-                  <span className="font-mono text-[11px] text-muted">aera / cases / {showcase.invoice.invoiceNumber}</span>
+                  <span className="font-mono text-[11px] text-muted">kindlypay / cases / {showcase.invoice.invoiceNumber}</span>
                   <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">Demo data</span>
                 </div>
                 <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_320px]">
@@ -238,7 +238,7 @@ export default async function LandingPage() {
               {["Approve discounts", "Waive balances", "Change payment terms", "Approve payment plans", "Start legal escalation", "Suspend accounts", "Edit financial records", "Close a case on a promise"].map((item) => (
                 <div key={item} className="flex items-center gap-3 rounded-2xl border border-line bg-white px-4 py-4">
                   <span className="grid size-8 place-items-center rounded-lg bg-[#fdecea] text-danger"><Ban size={15} /></span>
-                  <span className="text-[14px]"><span className="block font-mono text-[10px] uppercase tracking-[0.14em] text-muted">AERA never</span>{item}</span>
+                  <span className="text-[14px]"><span className="block font-mono text-[10px] uppercase tracking-[0.14em] text-muted">KindlyPay never</span>{item}</span>
                 </div>
               ))}
             </div>
@@ -281,9 +281,9 @@ export default async function LandingPage() {
       </main>
       <footer className="bg-ink">
         <div className="mx-auto flex max-w-[1180px] flex-col gap-6 border-t border-white/10 px-5 py-8 text-[13px] text-white/50 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-2.5 text-white"><span className="[--logo-ink:#0a0c10]"><LogoMark className="size-6" /></span><span className="font-semibold tracking-[-0.04em]">aera</span></div>
+          <div className="flex items-center gap-2.5 text-white"><span className="[--logo-check:var(--brand)] [--logo-ink:#0a0c10]"><LogoMark className="size-6" /></span><span className="font-semibold tracking-[-0.04em]"><Wordmark /></span></div>
           <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-2"><a href="#how" className="hover:text-white">How it works</a><a href="#controls" className="hover:text-white">Controls</a><Link href="/policy" className="hover:text-white">Policy</Link><Link href="/dashboard" className="hover:text-white">Workspace</Link></nav>
-          <p>© 2026 AERA · Demo build with fictional data</p>
+          <p>© 2026 KindlyPay · Demo build with fictional data</p>
         </div>
       </footer>
     </div>

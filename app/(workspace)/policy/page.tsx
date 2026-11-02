@@ -53,7 +53,7 @@ export default async function PolicyPage() {
 
       <section className="overflow-hidden rounded-2xl bg-ink p-6 text-white md:p-8">
         <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-white/45">Hard limits</p>
-        <h2 className="mt-3 text-[26px] font-medium leading-tight tracking-[-0.035em]">What AERA will never do.<span className="block text-white/45">No setting turns these on.</span></h2>
+        <h2 className="mt-3 text-[26px] font-medium leading-tight tracking-[-0.035em]">What KindlyPay will never do.<span className="block text-white/45">No setting turns these on.</span></h2>
         <ul className="mt-6 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {NEVER.map((item) => <li key={item} className="flex items-center gap-2.5 rounded-xl border border-white/[0.07] bg-white/[0.03] px-3.5 py-3 text-[13.5px]"><Ban size={15} className="shrink-0 text-[#ff8a7a]" aria-hidden="true" />{item}</li>)}
         </ul>

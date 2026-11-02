@@ -27,7 +27,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
           <Tabs active={decided ? "decided" : "waiting"} items={[{ key: "waiting", label: "Waiting", href: "/approvals", count: waiting.length }, { key: "decided", label: "Decided", href: "/approvals?view=decided", count: history.length }]} />
         </div>
         {items.length === 0 ? (
-          <EmptyState icon={ShieldCheck} title={decided ? "No decisions recorded yet" : "Nothing waiting for you"} body={decided ? "Approvals and rejections appear here with who made them." : "AERA will queue escalations, disputes and payment-plan requests here."} />
+          <EmptyState icon={ShieldCheck} title={decided ? "No decisions recorded yet" : "Nothing waiting for you"} body={decided ? "Approvals and rejections appear here with who made them." : "KindlyPay will queue escalations, disputes and payment-plan requests here."} />
         ) : (
           <ul className="divide-y divide-line">
             {items.map((item) => (

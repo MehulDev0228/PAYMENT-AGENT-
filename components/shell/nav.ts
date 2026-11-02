@@ -18,7 +18,7 @@ export const NAV: NavGroup[] = [
     { href: "/imports", label: "Imports", icon: FileUp },
   ] },
   { label: "Operate", items: [
-    { href: "/ask", label: "Ask AERA", icon: Bot },
+    { href: "/ask", label: "Ask KindlyPay", icon: Bot },
     { href: "/automation", label: "Automation", icon: Workflow },
     { href: "/policy", label: "Policy & controls", icon: Settings2 },
   ] },

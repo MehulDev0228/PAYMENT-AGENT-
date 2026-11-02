@@ -1,7 +1,7 @@
 import { defaultPolicy } from "@/lib/domain/policy";
 import type { AuditEvent, Company, CollectionPolicyStep, DataSet } from "@/lib/domain/types";
 import { CollectionsEngine } from "./engine";
-import { createRepository, type AeraRepository, type AuditFilter } from "./repository";
+import { createRepository, type KindlyPayRepository, type AuditFilter } from "./repository";
 import type { SqlClient, SqlDatabase } from "./sql";
 
 /**
@@ -128,7 +128,7 @@ export interface PostgresRepositoryOptions {
   readCacheMs?: number;
 }
 
-export function createPostgresRepository(db: SqlDatabase, options: PostgresRepositoryOptions = {}): AeraRepository {
+export function createPostgresRepository(db: SqlDatabase, options: PostgresRepositoryOptions = {}): KindlyPayRepository {
   const clock = options.now ?? ((company: Company) => businessNow(company.timezone));
   const readCacheMs = options.readCacheMs ?? 1500;
   const reads = new Map<string, { at: number; load: ReturnType<typeof loadDataSet> }>();
@@ -163,7 +163,7 @@ export function createPostgresRepository(db: SqlDatabase, options: PostgresRepos
     reads.delete(companyId);
     const result = await db.transaction(async (tx) => {
       // Serialise writers per company so concurrent imports or monitors cannot apply the same payment twice.
-      await tx.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`aera:${companyId}`]);
+      await tx.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`kindlypay:${companyId}`]);
       const { data, company } = await loadDataSet(tx, companyId);
       const before = fingerprint(data);
       const result = fn(new CollectionsEngine(data, clock(company)));

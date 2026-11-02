@@ -29,7 +29,7 @@ export default async function AutomationPage() {
       <AutomationConsole replyCases={replyCases} />
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <article className="panel overflow-hidden">
-          <SectionTitle title="Automation log" helper="Latest audit events from jobs and AERA" />
+          <SectionTitle title="Automation log" helper="Latest audit events from jobs and KindlyPay" />
           <ActivityFeed events={await repository.listAudit(companyId, { limit: 10 })} empty="No jobs have run yet" />
         </article>
         <article className="panel overflow-hidden">

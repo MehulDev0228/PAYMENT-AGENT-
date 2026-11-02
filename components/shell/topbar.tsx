@@ -29,7 +29,7 @@ export function Topbar({ counts, businessDate }: { counts: NavCounts; businessDa
           <div className="lg:hidden [&_a]:text-ink"><Logo tone="dark" href="/dashboard" /></div>
           <div className="hidden flex-1 md:block"><CommandPalette /></div>
           <div className="ml-auto flex items-center gap-2">
-            <Link href="/ask" className="btn-outline hidden sm:inline-flex"><Sparkles size={15} className="text-brand" aria-hidden="true" /> Ask AERA</Link>
+            <Link href="/ask" className="btn-outline hidden sm:inline-flex"><Sparkles size={15} className="text-brand" aria-hidden="true" /> Ask KindlyPay</Link>
             <div className="ml-1 hidden text-right leading-tight sm:block">
               <p className="text-[13px] font-medium">Mehul Patel</p>
               <p className="text-[11.5px] text-muted">Finance manager</p>

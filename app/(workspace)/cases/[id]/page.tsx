@@ -17,12 +17,12 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: item ? `${item.invoice.invoiceNumber} · ${item.customer.name}` : "Case" };
 }
 
-type TimelineEvent = { at: string; title: string; detail?: string; kind: "system" | "outbound" | "inbound" | "aera" | "payment" | "human"; quote?: boolean };
+type TimelineEvent = { at: string; title: string; detail?: string; kind: "system" | "outbound" | "inbound" | "kindlypay" | "payment" | "human"; quote?: boolean };
 const KIND = {
   system: { icon: Cog, tone: "bg-canvas text-muted border border-line" },
   outbound: { icon: Mail, tone: "bg-[#e9effc] text-info" },
   inbound: { icon: MessageSquareReply, tone: "bg-[#f1ecfd] text-violet" },
-  aera: { icon: Bot, tone: "bg-ink text-glow" },
+  kindlypay: { icon: Bot, tone: "bg-ink text-glow" },
   payment: { icon: CheckCircle2, tone: "bg-brand-soft text-success" },
   human: { icon: UserRound, tone: "bg-lime text-lime-ink" },
 } as const;
@@ -43,7 +43,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
     ...item.payments.map((payment) => ({ at: `${payment.paymentDate}T09:00:00Z`, title: `Payment received · ${formatMoney(payment.amount)}`, detail: `${payment.paymentReference} · ${payment.matchNotes ?? "matched"}`, kind: "payment" }) as TimelineEvent),
     ...[...audit, ...actionAudit]
       .filter((event) => !["reminder_sent"].includes(event.eventType))
-      .map((event) => ({ at: event.createdAt, title: event.eventType === "case_status_changed" ? `Status → ${String(event.dataSnapshot.to).replaceAll("_", " ")}` : humanizeEvent(event.eventType), detail: event.reason, kind: event.actorType === "human" ? "human" : event.actorType === "aera" ? "aera" : "system" }) as TimelineEvent),
+      .map((event) => ({ at: event.createdAt, title: event.eventType === "case_status_changed" ? `Status → ${String(event.dataSnapshot.to).replaceAll("_", " ")}` : humanizeEvent(event.eventType), detail: event.reason, kind: event.actorType === "human" ? "human" : event.actorType === "kindlypay" ? "kindlypay" : "system" }) as TimelineEvent),
   ].sort((a, b) => a.at.localeCompare(b.at));
 
   const pending = item.actions.filter((action) => action.status === "awaiting_approval");

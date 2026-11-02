@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { applyMigrations, createCompany, seedDemo } from "@/lib/data/db-setup";
 import { createMockRepository } from "@/lib/data/mock-repository";
 import { businessNow, createPostgresRepository } from "@/lib/data/postgres-repository";
-import type { AeraRepository } from "@/lib/data/repository";
+import type { KindlyPayRepository } from "@/lib/data/repository";
 import { DEMO_COMPANY_ID, DEMO_NOW } from "@/lib/data/seed";
 import type { SqlClient, SqlDatabase } from "@/lib/data/sql";
 
@@ -36,13 +36,13 @@ async function freshPostgres() {
   return { db, repo: createPostgresRepository(db, { now: () => DEMO_NOW }) };
 }
 
-const adapters: Array<[string, () => Promise<AeraRepository>]> = [
+const adapters: Array<[string, () => Promise<KindlyPayRepository>]> = [
   ["mock", async () => createMockRepository()],
   ["postgres", async () => (await freshPostgres()).repo],
 ];
 
 describe.each(adapters)("%s repository", (_name, make) => {
-  let repo: AeraRepository;
+  let repo: KindlyPayRepository;
   beforeEach(async () => { repo = await make(); });
 
   const caseFor = async (invoiceNumber: string) => (await repo.listCases(C, { q: invoiceNumber })).find((item) => item.invoice.invoiceNumber === invoiceNumber)!;
@@ -149,7 +149,7 @@ describe.each(adapters)("%s repository", (_name, make) => {
     });
 
     it("does not re-queue policy steps already handled in the seed", async () => {
-      const seeded = (await repo.listActions(C)).filter((action) => action.createdBy === "aera" && action.dataSnapshot.policyStepId);
+      const seeded = (await repo.listActions(C)).filter((action) => action.createdBy === "kindlypay" && action.dataSnapshot.policyStepId);
       expect(seeded.length).toBeGreaterThan(100);
       const created = (await repo.runDailyMonitor(C)).actions;
       expect(created.some((action) => seeded.some((s) => s.invoiceId === action.invoiceId && s.dataSnapshot.policyStepId === action.dataSnapshot.policyStepId))).toBe(false);

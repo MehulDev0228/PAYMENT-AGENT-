@@ -3,7 +3,7 @@ import type { AuditEvent } from "@/lib/domain/types";
 import { EmptyState, cx, formatDate } from "./ui";
 
 const ACTOR = {
-  aera: { icon: Bot, label: "AERA", tone: "bg-ink text-glow" },
+  kindlypay: { icon: Bot, label: "KindlyPay", tone: "bg-ink text-glow" },
   human: { icon: UserRound, label: "Person", tone: "bg-lime text-lime-ink" },
   system: { icon: Cog, label: "System", tone: "bg-canvas text-muted border border-line" },
 } as const;

@@ -8,7 +8,7 @@ export interface RequestContext {
 
 export function getRequestContext(request?: Request): RequestContext {
   return {
-    companyId: request?.headers.get("x-company-id") || process.env.AERA_DEV_COMPANY_ID || DEMO_COMPANY_ID,
+    companyId: request?.headers.get("x-company-id") || process.env.KINDLYPAY_DEV_COMPANY_ID || DEMO_COMPANY_ID,
     userId: request?.headers.get("x-user-id") || "user-demo-manager",
     role: (request?.headers.get("x-user-role") as RequestContext["role"]) || "finance_manager",
   };

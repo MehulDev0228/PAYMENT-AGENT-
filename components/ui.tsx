@@ -10,18 +10,22 @@ export function LogoMark({ className = "size-7" }: { className?: string }) {
   return (
     <svg viewBox="0 0 28 28" className={className} aria-hidden="true">
       <rect width="28" height="28" rx="8" fill="currentColor" />
-      <path d="M8.5 19.5 14 8.5l5.5 11" fill="none" stroke="var(--logo-ink, #0a0c10)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M11 15.2h6" stroke="var(--logo-ink, #0a0c10)" strokeWidth="2.4" strokeLinecap="round" />
-      <circle cx="21.5" cy="6.5" r="2.5" fill="var(--glow)" />
+      {/* A "k" whose leg finishes as a check: kindly, and paid. */}
+      <path d="M8.5 6.5v15M16 9.5l-6.4 5.1" fill="none" stroke="var(--logo-ink, #0a0c10)" strokeWidth="2.6" strokeLinecap="round" />
+      <path d="M11.6 14.2 15 19.2l6.5-8.7" fill="none" stroke="var(--logo-check, var(--glow))" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
+export function Wordmark() {
+  return <span>kindly<span className="opacity-55">pay</span></span>;
+}
+
 export function Logo({ tone = "light", href = "/" }: { tone?: "light" | "dark"; href?: string }) {
   return (
-    <Link href={href} className={cx("flex items-center gap-2.5 text-[17px] font-semibold tracking-[-0.04em]", tone === "light" ? "text-white" : "text-ink")} aria-label="AERA home">
-      <span className={tone === "light" ? "text-white [--logo-ink:#0a0c10]" : "text-ink [--logo-ink:#ffffff]"}><LogoMark /></span>
-      aera
+    <Link href={href} className={cx("flex items-center gap-2.5 text-[17px] font-semibold tracking-[-0.04em]", tone === "light" ? "text-white" : "text-ink")} aria-label="KindlyPay home">
+      <span className={tone === "light" ? "text-white [--logo-check:var(--brand)] [--logo-ink:#0a0c10]" : "text-ink [--logo-ink:#ffffff]"}><LogoMark /></span>
+      <Wordmark />
     </Link>
   );
 }
