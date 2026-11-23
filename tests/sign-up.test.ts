@@ -32,6 +32,14 @@ describe("sign-up", () => {
     expect(result.notice).toMatch(/confirmation link/);
   });
 
+  it("goes straight to the new workspace when Supabase does not ask for email confirmation", async () => {
+    state.signUp.mockResolvedValue({ data: { user: NEW_USER, session: { access_token: "token" } }, error: null });
+    // Next's redirect() throws a control-flow error that carries the target URL.
+    const redirected = await signUpAction({}, form({ ...valid, email: "someone@gmail.com" })).then(() => null, (error: { digest?: string }) => error.digest);
+    expect(redirected).toContain("/dashboard?welcome=1");
+    expect(state.createWorkspace).toHaveBeenCalledWith(expect.anything(), expect.any(Function), expect.objectContaining({ email: "someone@gmail.com" }));
+  });
+
   it("does nothing for an email that is already registered", async () => {
     // Supabase answers with an identity-less user instead of an error, so emails cannot be probed.
     state.signUp.mockResolvedValue({ data: { user: { ...NEW_USER, identities: [] }, session: null }, error: null });

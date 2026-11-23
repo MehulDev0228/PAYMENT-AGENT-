@@ -29,7 +29,7 @@ export default async function SignUpPage({ searchParams }: { searchParams: Promi
           fields={[
             { name: "companyName", label: "Company name", autoComplete: "organization", placeholder: "CityBond Traders" },
             { name: "name", label: "Your name", autoComplete: "name", placeholder: "Your full name" },
-            { name: "email", label: "Work email", type: "email", autoComplete: "email", placeholder: "you@company.com" },
+            { name: "email", label: "Email", type: "email", autoComplete: "email", placeholder: "you@example.com" },
             { name: "password", label: "Password", type: "password", autoComplete: "new-password", placeholder: "At least 8 characters" },
           ]} />
       </div>

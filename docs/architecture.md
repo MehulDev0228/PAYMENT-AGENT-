@@ -17,7 +17,7 @@
 - `app/api`: company-scoped REST endpoints, including the automation endpoints n8n calls.
 - `app/(marketing)`: public product site.
 - `proxy.ts`: refreshes the Supabase session and turns away signed-out requests (pages redirect to `/sign-in`, API routes answer 401).
-- `app/(auth)`: `/sign-in`, `/sign-up` (creates a Supabase Auth user, then a new company with that person as its admin, `lib/auth/workspace.ts`) and the one-click demo (`/api/auth/demo`). `/auth/confirm` finishes email confirmation.
+- `app/(auth)`: `/sign-in`, `/sign-up` (creates a Supabase Auth user, then a new company with that person as its admin, `lib/auth/workspace.ts`) and the one-click demo (`/api/auth/demo`). `/auth/confirm` finishes email confirmation when the Supabase project requires it.
 - `app/(workspace)`: authenticated workspace shell and pages. Server components read the repository directly. Mutations go through API routes (approvals, imports, payment review, case assignment, follow-ups) or server actions (automation console).
 - `n8n/workflows`: importable orchestration definitions. Gmail credentials live in n8n, not in this application.
 

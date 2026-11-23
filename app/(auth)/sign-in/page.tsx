@@ -29,7 +29,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
       {error === "link_expired" && <p role="alert" className="mt-6 rounded-xl bg-[#fdf7e6] px-3.5 py-3 text-[13px] text-warning">That link has expired or was already used. Sign in, or sign up again to get a new one.</p>}
       <div className="mt-8">
         <AuthForm action={signInAction} submit="Sign in" pendingLabel="Signing in…" hidden={{ next: next ?? "/dashboard" }}
-          fields={[{ name: "email", label: "Work email", type: "email", autoComplete: "email", placeholder: "you@company.com" }, { name: "password", label: "Password", type: "password", autoComplete: "current-password" }]} />
+          fields={[{ name: "email", label: "Email", type: "email", autoComplete: "email", placeholder: "you@example.com" }, { name: "password", label: "Password", type: "password", autoComplete: "current-password" }]} />
       </div>
 
       <div className="my-6 flex items-center gap-3 text-[12px] text-muted"><span className="h-px flex-1 bg-line" />or<span className="h-px flex-1 bg-line" /></div>

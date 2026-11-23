@@ -39,7 +39,7 @@ export async function signInAction(_state: AuthState, form: FormData): Promise<A
 const SignUp = z.object({
   companyName: z.string().trim().min(2, "Enter your company's name."),
   name: z.string().trim().min(2, "Enter your name."),
-  email: z.string().trim().toLowerCase().email("Enter a valid work email."),
+  email: z.string().trim().toLowerCase().email("Enter a valid email address."),
   password: z.string().min(8, "Use at least 8 characters for your password.").max(200),
 });
 
@@ -71,7 +71,8 @@ export async function signUpAction(_state: AuthState, form: FormData): Promise<A
 
   const outcome = await createWorkspaceForUser(db, repository.createCompany, { userId: data.user.id, email: parsed.data.email, name: parsed.data.name, companyName: parsed.data.companyName });
   if (outcome === "exists") return { error: ALREADY_REGISTERED, fields };
-  // With email confirmation on (the Supabase default) there is no session until the link is opened.
+  // With "Confirm email" off in Supabase the person is signed in right away. With it on (Supabase's default)
+  // there is no session until they open the link we emailed.
   if (!data.session) return { notice: `Almost there. We sent a confirmation link to ${parsed.data.email}. Open it to finish setting up your workspace.`, fields };
   redirect("/dashboard?welcome=1");
 }
