@@ -3,12 +3,12 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, X } from "lucide-react";
-import { Spinner, cx } from "./ui";
+import { ReadOnlyNote, Spinner, cx } from "./ui";
 
 // Long enough to read the confirmation before the decided item leaves the queue.
 const CONFIRM_MS = 700;
 
-export function ApprovalButtons({ actionId, size = "md" }: { actionId: string; size?: "sm" | "md" }) {
+export function ApprovalButtons({ actionId, size = "md", readOnly = false }: { actionId: string; size?: "sm" | "md"; readOnly?: boolean }) {
   const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
   const [done, setDone] = useState<"approve" | "reject" | null>(null);
   const [error, setError] = useState("");
@@ -29,6 +29,7 @@ export function ApprovalButtons({ actionId, size = "md" }: { actionId: string; s
     }
   }
 
+  if (readOnly) return <ReadOnlyNote />;
   if (done) {
     return (
       <span role="status" className={cx("animate-pop inline-flex min-h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium", done === "approve" ? "bg-brand-soft text-success" : "bg-[#eef0f3] text-[#4a515d]")}>

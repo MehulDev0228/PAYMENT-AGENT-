@@ -1,7 +1,7 @@
 import { defaultPolicy } from "@/lib/domain/policy";
-import type { AuditEvent, Company, CollectionPolicyStep, DataSet } from "@/lib/domain/types";
+import type { AuditEvent, Company, CollectionPolicyStep, DataSet, User } from "@/lib/domain/types";
 import { CollectionsEngine } from "./engine";
-import { createRepository, type KindlyPayRepository, type AuditFilter } from "./repository";
+import { createRepository, type KindlyPayRepository, type AuditReader } from "./repository";
 import type { SqlClient, SqlDatabase } from "./sql";
 
 /**
@@ -22,12 +22,13 @@ interface TableSpec { table: string; key: Exclude<keyof DataSet, "companies" | "
 
 const TABLES: TableSpec[] = [
   { table: "customers", key: "customers", columns: [["id"], ["company_id"], ["customer_code"], ["name"], ["email"], ["phone"], ["region"], ["account_manager"], ["status"], ["created_at", "ts"]] },
-  { table: "invoices", key: "invoices", columns: [["id"], ["company_id"], ["customer_id"], ["invoice_number"], ["invoice_date"], ["due_date"], ["amount"], ["currency"], ["amount_paid"], ["amount_outstanding"], ["status"], ["source"], ["created_at", "ts"], ["updated_at", "ts"]] },
+  { table: "invoices", key: "invoices", columns: [["id"], ["company_id"], ["customer_id"], ["invoice_number"], ["invoice_date"], ["due_date"], ["amount"], ["currency"], ["amount_paid"], ["amount_outstanding"], ["status"], ["source"], ["erp_outstanding"], ["reconciliation_status"], ["reconciliation_note"], ["created_at", "ts"], ["updated_at", "ts"]] },
   { table: "payments", key: "payments", columns: [["id"], ["company_id"], ["invoice_id"], ["customer_id"], ["payment_reference"], ["amount"], ["payment_date"], ["source"], ["match_status"], ["match_notes"], ["created_at", "ts"]] },
   { table: "collection_cases", key: "cases", columns: [["id"], ["company_id"], ["invoice_id"], ["customer_id"], ["status"], ["priority"], ["days_overdue"], ["next_action"], ["next_action_at", "ts"], ["assigned_to"], ["created_at", "ts"], ["updated_at", "ts"]] },
   { table: "collection_actions", key: "actions", columns: [["id"], ["company_id"], ["collection_case_id"], ["invoice_id"], ["customer_id"], ["action_type"], ["channel"], ["message"], ["reason"], ["data_snapshot", "json"], ["scheduled_at", "ts"], ["executed_at", "ts"], ["status"], ["created_by"], ["approved_by"], ["created_at", "ts"]] },
   { table: "payment_promises", key: "promises", columns: [["id"], ["company_id"], ["invoice_id"], ["customer_id"], ["promised_amount"], ["promised_date"], ["source_message_id"], ["status"], ["created_at", "ts"], ["updated_at", "ts"]] },
   { table: "communication_messages", key: "communications", columns: [["id"], ["company_id"], ["customer_id"], ["invoice_id"], ["collection_case_id"], ["channel"], ["direction"], ["external_message_id"], ["subject"], ["body"], ["received_at", "ts"], ["processed_at", "ts"]] },
+  { table: "case_follow_ups", key: "followUps", columns: [["id"], ["company_id"], ["collection_case_id"], ["customer_id"], ["outcome"], ["note"], ["next_follow_up_date"], ["created_by"], ["created_at", "ts"]] },
 ];
 
 const AUDIT: TableSpec = { table: "audit_events", key: "auditEvents", columns: [["id"], ["company_id"], ["actor_type"], ["actor_id"], ["event_type"], ["entity_type"], ["entity_id"], ["reason"], ["data_snapshot", "json"], ["created_at", "ts"]] };
@@ -52,6 +53,8 @@ const LOAD_SQL = `
 select
   (select row_to_json(c) from public.companies c where c.id = $1) as company,
   ${TABLES.map((spec) => `(select coalesce(json_agg(t), '[]'::json) from public.${spec.table} t where t.company_id = $1) as ${spec.table}`).join(",\n  ")},
+  (select coalesce(json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email, 'role', u.role, 'created_at', u.created_at)), '[]'::json)
+     from public.users u where u.company_id = $1) as users,
   (select coalesce(json_agg(s order by s.days_overdue), '[]'::json) from public.collection_policy_steps s
      where s.policy_id = (select p.id from public.collection_policies p where p.company_id = $1 and p.is_active order by p.created_at limit 1)) as policy_steps`;
 
@@ -67,8 +70,12 @@ async function loadDataSet(client: SqlClient, companyId: string): Promise<{ data
     id: String(step.step_key), daysOverdue: Number(step.days_overdue), action: step.action as CollectionPolicyStep["action"], tone: step.tone as CollectionPolicyStep["tone"],
     requiresHumanApproval: Boolean(step.requires_human_approval), ...(step.escalation_level ? { escalationLevel: step.escalation_level as CollectionPolicyStep["escalationLevel"] } : {}),
   }));
+  // Workspace users are read-only here: they are provisioned through Supabase Auth (npm run db:add-user).
+  const users = (row.users as Array<Record<string, unknown>>).map((user): User => ({
+    id: String(user.id), companyId, name: String(user.name), email: String(user.email), role: user.role as User["role"], createdAt: new Date(user.created_at as string).toISOString(),
+  }));
   const data = {
-    companies: [company], users: [], auditEvents: [],
+    companies: [company], users, auditEvents: [],
     policies: [steps.length ? { companyId, steps } : defaultPolicy(companyId)],
   } as unknown as DataSet;
   for (const spec of TABLES) {
@@ -144,13 +151,14 @@ export function createPostgresRepository(db: SqlDatabase, options: PostgresRepos
     return load;
   };
 
-  const listAudit = async (companyId: string, filter: AuditFilter = {}): Promise<AuditEvent[]> => {
+  const listAudit: AuditReader = async (companyId, filter): Promise<AuditEvent[]> => {
     const [row] = await db.query<{ rows: Array<Record<string, unknown>> }>(
       `select coalesce(json_agg(t), '[]'::json) as rows from (
          select * from public.audit_events
          where company_id = $1 and ($2::text is null or entity_id = $2) and ($3::text is null or entity_type = $3)
+           and ($5::text[] is null or entity_id = any($5::text[]))
          order by created_at desc limit $4) t`,
-      [companyId, filter.entityId ?? null, filter.entityType ?? null, filter.limit ?? 100],
+      [companyId, filter.entityId ?? null, filter.entityType ?? null, filter.limit ?? 100, filter.entityIds ?? null],
     );
     return row.rows.map((item) => fromRow(AUDIT, item) as unknown as AuditEvent);
   };

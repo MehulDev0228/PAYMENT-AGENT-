@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getRequestContext, requireManager } from "@/lib/auth";
+import { apiError, getApiContext, requireManager } from "@/lib/auth";
 import { repository } from "@/lib/data";
 import { PAYMENT_COLUMNS, asNumber, parseWorkbook, pickColumns } from "@/lib/imports";
 
@@ -8,7 +8,7 @@ const PaymentRow = z.object({ payment_reference: z.coerce.string().min(1, "refer
 
 export async function POST(request: Request) {
   try {
-    const context = getRequestContext(request); requireManager(context);
+    const context = await getApiContext(request); requireManager(context);
     const form = await request.formData(); const file = form.get("file");
     if (!(file instanceof File)) return NextResponse.json({ error: "Attach a CSV or XLSX file using the field name 'file'." }, { status: 400 });
     const { rows: picked, ignored } = pickColumns(await parseWorkbook(file), PAYMENT_COLUMNS);
@@ -17,6 +17,6 @@ export async function POST(request: Request) {
       if (!parsed.success) throw new Error(`Row ${index + 2}: ${parsed.error.issues[0]?.message}`);
       return parsed.data;
     });
-    return NextResponse.json({ ...(await repository.importPayments(context.companyId, rows)), ignoredColumns: ignored });
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Import failed" }, { status: 400 }); }
+    return NextResponse.json({ ...(await repository.importPayments(context, rows)), ignoredColumns: ignored });
+  } catch (error) { return apiError(error, "Upload failed"); }
 }

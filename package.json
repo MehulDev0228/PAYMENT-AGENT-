@@ -11,9 +11,11 @@
     "check": "tsc --noEmit && vitest run",
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/db.ts migrate",
     "db:create-company": "tsx --env-file-if-exists=.env.local scripts/db.ts create-company",
-    "db:seed-demo": "tsx --env-file-if-exists=.env.local scripts/db.ts seed-demo"
+    "db:seed-demo": "tsx --env-file-if-exists=.env.local scripts/db.ts seed-demo",
+    "db:add-user": "tsx --env-file-if-exists=.env.local scripts/db.ts add-user"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.57.4",
     "lucide-react": "^0.468.0",
     "next": "^16.3.6",
@@ -22,6 +24,7 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "read-excel-file": "^9.3.10",
+    "write-excel-file": "^4.1.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {

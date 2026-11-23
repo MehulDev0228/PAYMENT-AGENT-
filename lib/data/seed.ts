@@ -1,6 +1,6 @@
 import { applicablePolicyStep, defaultPolicy, priorityFor } from "@/lib/domain/policy";
 import { daysBetween, isoDate } from "@/lib/domain/money";
-import type { CollectionAction, CollectionCase, CommunicationMessage, Customer, DataSet, Invoice, Payment, PaymentPromise } from "@/lib/domain/types";
+import type { CaseFollowUp, CollectionAction, CollectionCase, CommunicationMessage, Customer, DataSet, Invoice, Payment, PaymentPromise, User } from "@/lib/domain/types";
 
 export const DEMO_COMPANY_ID = "00000000-0000-0000-0000-000000000001";
 export const DEMO_NOW = new Date("2026-09-27T09:00:00.000Z");
@@ -9,6 +9,17 @@ const companyWords = ["Atlas", "Bluebird", "Cedar", "Delta", "Evergreen", "Forge
 const companyTypes = ["Foods", "Logistics", "Systems", "Textiles", "Industries", "Retail", "Works", "Healthcare", "Trading", "Manufacturing"];
 const managers = ["Ananya Rao", "Karan Mehta", "Mira Shah", "Rohit Menon", "Sara D'Souza"];
 const regions = ["North", "South", "East", "West", "Central"];
+
+/** Demo workspace: the dev-mode manager, three collectors who own cases, and a read-only viewer. */
+const users: User[] = [
+  { id: "user-demo-manager", companyId: DEMO_COMPANY_ID, name: "Mehul Patel", email: "mehul@kindlypay.example", role: "finance_manager", createdAt: "2025-01-01T00:00:00.000Z" },
+  { id: "user-demo-priya", companyId: DEMO_COMPANY_ID, name: "Priya Nair", email: "priya@kindlypay.example", role: "collection_manager", createdAt: "2025-01-01T00:00:00.000Z" },
+  { id: "user-demo-arjun", companyId: DEMO_COMPANY_ID, name: "Arjun Kapoor", email: "arjun@kindlypay.example", role: "collection_manager", createdAt: "2025-01-01T00:00:00.000Z" },
+  { id: "user-demo-neha", companyId: DEMO_COMPANY_ID, name: "Neha Gupta", email: "neha@kindlypay.example", role: "collection_manager", createdAt: "2025-01-01T00:00:00.000Z" },
+  { id: "user-demo-viewer", companyId: DEMO_COMPANY_ID, name: "Divya Iyer", email: "divya@kindlypay.example", role: "viewer", createdAt: "2025-01-01T00:00:00.000Z" },
+];
+// Case owners in rotation; every fifth case is left unassigned for the queue.
+const caseOwners = [users[0].id, users[1].id, users[2].id, users[3].id, undefined];
 
 function dateOffset(days: number): string {
   const d = new Date(DEMO_NOW);
@@ -133,7 +144,7 @@ export function createSeedData(): DataSet {
         daysOverdue: overdue,
         nextAction: status === "escalated" ? "Manager review" : "Evaluate collection policy",
         nextActionAt: dateOffset(status === "escalated" ? 0 : 1),
-        assignedTo: managers[index % managers.length],
+        assignedTo: caseOwners[index % caseOwners.length],
         createdAt: `${invoice.dueDate}T08:00:00.000Z`,
         updatedAt: "2026-09-27T09:00:00.000Z",
       };
@@ -252,9 +263,28 @@ export function createSeedData(): DataSet {
     createdAt: "2026-09-25T10:30:00.000Z",
   });
 
+  // A few calls logged by collectors, so the dashboard has follow-ups due on the demo date.
+  const followUpNotes: Array<[CaseFollowUp["outcome"], string, string | undefined]> = [
+    ["no_answer", "Called the accounts desk twice, no answer. Will try the finance head.", "2026-09-26"],
+    ["reached", "Spoke to accounts. Invoice is with their approver; asked us to call back.", "2026-09-27"],
+    ["disputed", "Customer says 40 units were short-delivered. Sent the signed delivery note.", "2026-09-27"],
+    ["promised", "Finance head promised a transfer by end of week.", "2026-09-30"],
+    ["reached", "Payment run is on Monday; confirmed our invoice is in it.", undefined],
+  ];
+  const followUps: CaseFollowUp[] = cases
+    .filter((item) => item.status === "escalated" && item.assignedTo)
+    .slice(0, followUpNotes.length)
+    .map((item, index) => {
+      const [outcome, note, nextFollowUpDate] = followUpNotes[index];
+      return {
+        id: `followup-${String(index + 1).padStart(3, "0")}`, companyId: DEMO_COMPANY_ID, collectionCaseId: item.id, customerId: item.customerId,
+        outcome, note, ...(nextFollowUpDate ? { nextFollowUpDate } : {}), createdBy: item.assignedTo!, createdAt: `2026-09-2${3 + (index % 3)}T10:${String(10 + index).padStart(2, "0")}:00.000Z`,
+      };
+    });
+
   return {
     companies: [{ id: DEMO_COMPANY_ID, name: "KindlyPay Demo Company", currency: "INR", timezone: "Asia/Kolkata", autonomyMode: "routine_automatic", createdAt: "2025-01-01T00:00:00.000Z" }],
-    users: [{ id: "user-demo-manager", companyId: DEMO_COMPANY_ID, name: "Mehul Patel", email: "mehul@kindlypay.example", role: "finance_manager", createdAt: "2025-01-01T00:00:00.000Z" }],
+    users: users.map((user) => ({ ...user })),
     customers,
     invoices,
     payments,
@@ -262,6 +292,7 @@ export function createSeedData(): DataSet {
     actions,
     promises,
     communications,
+    followUps,
     policies: [defaultPolicy(DEMO_COMPANY_ID)],
     auditEvents: [
       { id: "audit-seed-1042-reminder", companyId: DEMO_COMPANY_ID, actorType: "kindlypay", eventType: "reminder_sent", entityType: "collection_case", entityId: acceptanceCase.id, reason: "Policy step due reached; routine reminder sent", dataSnapshot: { invoiceNumber: "INV-1042", amountOutstanding: 84_000, tone: "friendly" }, createdAt: "2026-09-23T05:30:01.000Z" },

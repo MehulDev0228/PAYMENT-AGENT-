@@ -1,0 +1,150 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+import { DEMO_COMPANY_ID } from "@/lib/data/seed";
+import { parseRegions } from "@/lib/domain/regions";
+import type { UserRole } from "@/lib/domain/types";
+
+/**
+ * How KindlyPay identifies the caller.
+ *  - supabase: a Supabase Auth session; company and role come from the caller's public.users row.
+ *  - dev:      no authentication. Every request acts as a demo manager. Local development only.
+ */
+export type AuthMode = "supabase" | "dev";
+
+/** "automation" is the n8n service caller, authenticated by KINDLYPAY_INTERNAL_API_TOKEN. */
+export type ContextRole = UserRole | "automation";
+
+export interface RequestContext {
+  companyId: string;
+  userId: string;
+  role: ContextRole;
+  name: string;
+  email?: string;
+  companyName: string;
+  mode: AuthMode;
+  /**
+   * The regions this caller may see and act on; null is every region. A RequestContext is the
+   * repository's DataScope, so passing it to the repository enforces this on every call.
+   */
+  regions: string[] | null;
+}
+
+export type AuthEnv = Partial<Record<
+  | "KINDLYPAY_AUTH_MODE" | "KINDLYPAY_DATA_ADAPTER" | "NODE_ENV" | "NEXT_PUBLIC_SUPABASE_URL" | "NEXT_PUBLIC_SUPABASE_ANON_KEY"
+  | "KINDLYPAY_DEV_COMPANY_ID" | "KINDLYPAY_DEV_ROLE" | "KINDLYPAY_DEV_REGIONS" | "KINDLYPAY_INTERNAL_API_TOKEN" | "KINDLYPAY_AUTOMATION_COMPANY_ID",
+  string
+>>;
+
+/** 401: no or invalid credentials. 403: authenticated, but not allowed. */
+export class AuthError extends Error {
+  constructor(public readonly status: 401 | 403, message: string) {
+    super(message);
+    this.name = "AuthError";
+  }
+}
+
+const USER_ROLES = new Set<UserRole>(["admin", "finance_manager", "collection_manager", "viewer"]);
+const MANAGER_ROLES = new Set<ContextRole>(["admin", "finance_manager", "collection_manager", "automation"]);
+
+export const ROLE_LABELS: Record<ContextRole, string> = {
+  admin: "Owner", finance_manager: "Finance manager", collection_manager: "Collections", viewer: "Viewer (read-only)", automation: "Automation",
+};
+
+export function isUserRole(value: unknown): value is UserRole {
+  return typeof value === "string" && USER_ROLES.has(value as UserRole);
+}
+
+/**
+ * Picks the auth mode and refuses unsafe combinations. With nothing configured, local `npm run dev`
+ * runs in dev mode on the mock adapter. Setting NEXT_PUBLIC_SUPABASE_URL switches to Supabase Auth.
+ */
+export function resolveAuthMode(env: AuthEnv): AuthMode {
+  const requested = env.KINDLYPAY_AUTH_MODE || (env.NEXT_PUBLIC_SUPABASE_URL ? "supabase" : "dev");
+  const adapter = env.KINDLYPAY_DATA_ADAPTER || "mock";
+  if (requested === "dev") {
+    // Without authentication anyone can read and change the data. Allowed for the fictional in-memory
+    // dataset, or for a real database only on a developer machine.
+    if (adapter !== "mock" && env.NODE_ENV === "production") {
+      throw new Error("KINDLYPAY_AUTH_MODE=dev turns authentication off and cannot be used with a database in production. Configure Supabase Auth (see README).");
+    }
+    return "dev";
+  }
+  if (requested === "supabase") {
+    if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.NEXT_PUBLIC_SUPABASE_ANON_KEY) throw new Error("Supabase Auth needs NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY");
+    if (adapter === "mock") throw new Error("Supabase Auth needs KINDLYPAY_DATA_ADAPTER=postgres: workspace users live in public.users");
+    return "supabase";
+  }
+  throw new Error(`Unknown KINDLYPAY_AUTH_MODE "${requested}" (expected supabase or dev)`);
+}
+
+/** A verified Supabase Auth user (from the session JWT, never from request headers). */
+export interface SessionUser { id: string; email?: string }
+
+/** The caller's row in public.users. */
+export interface UserProfile { id: string; companyId: string; companyName: string; role: UserRole; name: string; email: string; regions: string[] | null }
+
+export interface ContextSource {
+  /** The Authorization header, only consulted on routes that accept the automation token. */
+  authorization?: string | null;
+  /** x-company-id sent by n8n. Never selects a company; a mismatch with the token's company is rejected. */
+  companyHeader?: string | null;
+  /** True for the n8n endpoints: /api/automation/*, the action queue and the execution callback. */
+  acceptsAutomation?: boolean;
+  sessionUser: () => Promise<SessionUser | null>;
+  findProfile: (userId: string) => Promise<UserProfile | null>;
+}
+
+export function devContext(env: AuthEnv): RequestContext {
+  const role = env.KINDLYPAY_DEV_ROLE || "finance_manager";
+  if (!isUserRole(role)) throw new Error(`Unknown KINDLYPAY_DEV_ROLE "${role}"`);
+  const regions = env.KINDLYPAY_DEV_REGIONS ? parseRegions(env.KINDLYPAY_DEV_REGIONS) : null;
+  const companyId = env.KINDLYPAY_DEV_COMPANY_ID || DEMO_COMPANY_ID;
+  const companyName = companyId === DEMO_COMPANY_ID ? "KindlyPay Demo Company" : "Local company";
+  return { companyId, companyName, userId: "user-demo-manager", role, name: "Mehul Patel", email: "mehul@kindlypay.example", mode: "dev", regions };
+}
+
+function sameSecret(actual: string, expected: string): boolean {
+  const digest = (value: string) => createHash("sha256").update(value).digest();
+  return timingSafeEqual(digest(actual), digest(expected));
+}
+
+function automationContext(source: ContextSource, env: AuthEnv, mode: AuthMode): RequestContext {
+  const expected = env.KINDLYPAY_INTERNAL_API_TOKEN;
+  const token = source.authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+  if (!expected) throw new AuthError(401, "Automation token is not configured (KINDLYPAY_INTERNAL_API_TOKEN)");
+  if (!token || !sameSecret(token, expected)) throw new AuthError(401, "Unauthorized automation request");
+  // The token is bound to one company by configuration, so a caller cannot pick a tenant with a header.
+  const companyId = env.KINDLYPAY_AUTOMATION_COMPANY_ID || (mode === "dev" ? devContext(env).companyId : undefined);
+  if (!companyId) throw new Error("KINDLYPAY_AUTOMATION_COMPANY_ID must be set to the company n8n works for");
+  if (source.companyHeader && source.companyHeader !== companyId) throw new AuthError(403, "x-company-id does not match the company this automation token is issued for");
+  return { companyId, companyName: "", userId: "automation:n8n", role: "automation", name: "n8n automation", mode, regions: null };
+}
+
+/**
+ * Derives who is calling. Identity comes only from the verified session plus public.users, or from the
+ * automation token on the n8n endpoints. x-user-id / x-user-role / x-company-id headers are never trusted.
+ */
+export async function resolveRequestContext(source: ContextSource, env: AuthEnv): Promise<RequestContext> {
+  const mode = resolveAuthMode(env);
+  const bearer = /^Bearer\s/i.test(source.authorization ?? "");
+  if (source.acceptsAutomation && (bearer || (mode === "dev" && env.KINDLYPAY_INTERNAL_API_TOKEN))) {
+    return automationContext(source, env, mode);
+  }
+  if (mode === "dev") return devContext(env);
+
+  const user = await source.sessionUser();
+  if (!user) throw new AuthError(401, "Sign in to continue");
+  const profile = await source.findProfile(user.id);
+  if (!profile) throw new AuthError(403, "This account has no access to a KindlyPay workspace. Ask an admin to add you.");
+  if (!isUserRole(profile.role)) throw new AuthError(403, "Unknown workspace role");
+  return { companyId: profile.companyId, companyName: profile.companyName, userId: profile.id, role: profile.role, name: profile.name, email: profile.email, mode, regions: profile.regions };
+}
+
+export function canManage(context: Pick<RequestContext, "role">): boolean {
+  return MANAGER_ROLES.has(context.role);
+}
+
+/** Mutations (approvals, imports, payment matches, automation jobs) need a manager role. Viewers are read-only. */
+export function requireManager(context: Pick<RequestContext, "role">): void {
+  if (!canManage(context)) throw new AuthError(403, "Your role is read-only. A manager has to do this.");
+}
+

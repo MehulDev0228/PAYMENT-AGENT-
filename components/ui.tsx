@@ -61,6 +61,8 @@ const STATUS_TONES: Record<string, string> = {
   payment_promised: "violet", active: "violet", high: "orange",
   reminder_sent: "info", customer_replied: "info", reminder_pending: "warning", awaiting_approval: "warning", medium: "warning", payment_match_review_required: "warning", pending: "warning",
   overdue: "orange", low: "neutral", cancelled: "neutral",
+  // Ledger sync outcomes and reconciliation flags.
+  new: "success", updated: "info", unchanged: "neutral", flagged: "warning", balance_mismatch: "warning", missing_from_ledger: "orange", amount_below_paid: "danger",
 };
 const TONE_CLASSES: Record<string, string> = {
   success: "bg-[#e7f6ee] text-[#05663f] [--dot:#0a8f5f]",
@@ -77,6 +79,7 @@ const STATUS_LABELS: Record<string, string> = {
   payment_promised: "pay date given", promise_missed: "missed pay date", escalated: "call needed", payment_received: "paid",
   awaiting_approval: "needs you", executed: "sent", payment_match_review_required: "check match", unmatched: "not matched",
   fulfilled: "paid on time", missed: "missed", cancelled: "replaced", pending: "waiting",
+  missing_from_ledger: "not in your sheet", amount_below_paid: "amount below paid", balance_mismatch: "balance differs",
 };
 
 export function StatusBadge({ value, label, className }: { value: string; label?: string; className?: string }) {
@@ -131,6 +134,11 @@ export function SectionTitle({ title, helper, action }: { title: string; helper?
 
 export function TextLink({ href, children }: { href: string; children: ReactNode }) {
   return <Link href={href} className="group inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-[13px] font-medium text-ink transition-colors hover:bg-black/[0.04] [&_svg]:transition-transform [&_svg]:duration-200 hover:[&_svg]:-translate-y-px hover:[&_svg]:translate-x-px">{children}</Link>;
+}
+
+/** Shown to viewers in place of controls that change data. */
+export function ReadOnlyNote({ children = "Read-only access. A manager makes this decision." }: { children?: ReactNode }) {
+  return <p className="text-[12.5px] text-muted">{children}</p>;
 }
 
 export function EmptyState({ icon: Icon, title, body }: { icon: LucideIcon; title: string; body?: string }) {

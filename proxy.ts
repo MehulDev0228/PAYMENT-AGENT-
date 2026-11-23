@@ -1,40 +1,44 @@
+import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { SESSION_COOKIE, readSession } from "@/lib/session";
+import { resolveAuthMode, type AuthEnv } from "@/lib/auth/context";
 
-/** Endpoints n8n calls with the shared service token instead of a browser session. */
-const SERVICE_PATHS = [/^\/api\/automation\//, /^\/api\/collections\/actions\/[^/]+\/executed$/];
-const PUBLIC_PATHS = [/^\/$/, /^\/sign-in$/, /^\/sign-up$/, /^\/api\/auth\//];
-const AUTH_PAGES = new Set(["/sign-in", "/sign-up"]);
+/** Open to signed-out visitors. The auth pages check the session themselves. */
+const PUBLIC_PATHS = [/^\/$/, /^\/sign-in$/, /^\/sign-up$/, /^\/auth\/confirm$/, /^\/api\/auth\//];
 
-export function proxy(request: NextRequest) {
+/**
+ * Refreshes the Supabase session cookie and turns away signed-out requests before they reach the app:
+ * pages redirect to /sign-in, API routes answer 401. Routes still derive the full identity themselves
+ * (lib/auth), which is also where the n8n bearer token is verified.
+ */
+export async function proxy(request: NextRequest) {
+  if (resolveAuthMode(process.env as AuthEnv) === "dev") return NextResponse.next();
+
+  let response = NextResponse.next({ request });
+  const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    cookies: {
+      getAll: () => request.cookies.getAll(),
+      setAll: (items) => {
+        for (const { name, value } of items) request.cookies.set(name, value);
+        response = NextResponse.next({ request });
+        for (const { name, value, options } of items) response.cookies.set(name, value, options);
+      },
+    },
+  });
+  const { data } = await supabase.auth.getClaims();
   const { pathname, search } = request.nextUrl;
-  const session = readSession(request.cookies.get(SESSION_COOKIE)?.value);
+  if (data?.claims?.sub || PUBLIC_PATHS.some((pattern) => pattern.test(pathname))) return response;
 
-  // Identity headers are only ever set here, never trusted from the client.
-  const headers = new Headers(request.headers);
-  headers.delete("x-kindlypay-service");
-  if (!session) headers.delete("x-company-id");
-
-  if (SERVICE_PATHS.some((pattern) => pattern.test(pathname)) && !session) {
-    const expected = process.env.KINDLYPAY_INTERNAL_API_TOKEN;
-    const authorized = expected ? request.headers.get("authorization") === `Bearer ${expected}` : process.env.NODE_ENV !== "production";
-    if (!authorized) return NextResponse.json({ error: "Unauthorized automation request" }, { status: 401 });
-    if (request.headers.get("x-company-id")) headers.set("x-company-id", request.headers.get("x-company-id")!);
-    headers.set("x-kindlypay-service", "1");
-    return NextResponse.next({ request: { headers } });
+  if (pathname.startsWith("/api/")) {
+    // n8n calls carry a bearer token instead of a session; the route checks it.
+    if (/^Bearer\s/i.test(request.headers.get("authorization") ?? "")) return response;
+    return NextResponse.json({ error: "Sign in to continue" }, { status: 401 });
   }
-
-  if (session && AUTH_PAGES.has(pathname)) return NextResponse.redirect(new URL("/dashboard", request.url));
-  if (session || PUBLIC_PATHS.some((pattern) => pattern.test(pathname))) return NextResponse.next({ request: { headers } });
-
-  if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Sign in to continue" }, { status: 401 });
   const signIn = new URL("/sign-in", request.url);
   signIn.searchParams.set("next", `${pathname}${search}`);
   return NextResponse.redirect(signIn);
 }
 
 export const config = {
-  // Everything except Next internals and static files.
-  matcher: ["/((?!_next/static|_next/image|icon.svg|templates/|.*\\.(?:png|jpg|svg|ico|csv)$).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|templates/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
 };

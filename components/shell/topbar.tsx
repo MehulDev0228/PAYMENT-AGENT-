@@ -36,6 +36,7 @@ export function Topbar({ counts, businessDate, user }: { counts: NavCounts; busi
           <div className="hidden flex-1 md:block" data-tour="search"><CommandPalette /></div>
           <div className="ml-auto flex items-center gap-2">
             <Link href="/ask" data-tour="ask" className="btn-outline group hidden sm:inline-flex"><Sparkles size={15} className="text-brand transition-transform duration-300 group-hover:rotate-12 group-hover:scale-110" aria-hidden="true" /> Ask KindlyPay</Link>
+            {user.devMode && <span className="hidden whitespace-nowrap rounded-md bg-[#fdf7e6] px-2 py-1 font-mono text-[10.5px] uppercase tracking-[0.12em] text-warning xl:inline" title="KINDLYPAY_AUTH_MODE=dev: sign-in is off. Never expose this to a network.">Dev mode · no sign-in</span>}
             <UserMenu user={user} />
           </div>
         </div>

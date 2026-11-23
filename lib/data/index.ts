@@ -21,3 +21,16 @@ function selectRepository(): KindlyPayRepository {
 }
 
 export const repository: KindlyPayRepository = selectRepository();
+
+/** The PostgreSQL connection behind the postgres adapter (undefined on the mock adapter). */
+export function sqlDatabase(): SqlDatabase | undefined {
+  return globalThis.__kindlypayDatabase;
+}
+
+let demo: KindlyPayRepository | undefined;
+
+/** Fictional demo data for public pages, so they never read a tenant's database. */
+export function demoRepository(): KindlyPayRepository {
+  if ((process.env.KINDLYPAY_DATA_ADAPTER || "mock") === "mock") return repository;
+  return (demo ??= sharedMockRepository());
+}

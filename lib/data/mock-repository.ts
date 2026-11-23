@@ -18,7 +18,7 @@ export function createMockRepository(): KindlyPayRepository {
 }
 
 // Bump when the repository shape changes so dev-server hot reloads do not keep a stale instance.
-const INSTANCE_VERSION = 6;
+const INSTANCE_VERSION = 7;
 declare global { var __kindlypayMockRepository: { version: number; repository: KindlyPayRepository } | undefined; }
 
 export function sharedMockRepository(): KindlyPayRepository {

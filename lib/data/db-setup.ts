@@ -97,7 +97,11 @@ export async function seedDemo(db: SqlDatabase): Promise<string> {
     customers: seed.customers.map(withUuids),
     invoices: seed.invoices.map(withUuids),
     payments: seed.payments.map(withUuids),
-    cases: seed.cases.map(withUuids),
+    // Workspace users come from Supabase Auth, so the demo's fictional collectors are not provisioned:
+    // cases start unassigned and without their seeded follow-ups.
+    users: [],
+    cases: seed.cases.map((item) => ({ ...withUuids(item), assignedTo: undefined })),
+    followUps: [],
     actions: seed.actions.map(withUuids),
     promises: seed.promises.map(withUuids),
     communications: seed.communications.map(withUuids),

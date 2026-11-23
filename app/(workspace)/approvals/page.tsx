@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { ShieldCheck } from "lucide-react";
 import { ApprovalButtons } from "@/components/approval-buttons";
 import { EmptyState, PageHeader, RowLink, StatusBadge, Tabs, formatDate } from "@/components/ui";
-import { getSessionContext } from "@/lib/auth";
-import { repository } from "@/lib/data";
+import { canManage, getPageContext } from "@/lib/auth";
+import { repository, sqlDatabase } from "@/lib/data";
+import { userNames } from "@/lib/data/users";
 import { formatMoney } from "@/lib/domain/money";
 
 export const metadata: Metadata = { title: "Needs you" };
@@ -11,11 +12,14 @@ export const dynamic = "force-dynamic";
 
 export default async function ApprovalsPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const { view } = await searchParams;
-  const { companyId } = await getSessionContext();
+  const context = await getPageContext();
+  const { companyId } = context;
   const decided = view === "decided";
-  const waiting = await repository.listApprovals(companyId);
-  const history = await repository.listApprovals(companyId, "decided");
+  const waiting = await repository.listApprovals(context);
+  const history = await repository.listApprovals(context, "decided");
   const items = decided ? history : waiting;
+  const db = sqlDatabase();
+  const names = db ? await userNames(db, companyId) : new Map<string, string>();
   const atStake = waiting.reduce((total, item) => total + item.amountOutstanding, 0);
 
   return (
@@ -44,7 +48,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
                   <p className="mt-0.5 whitespace-nowrap text-[12px] text-muted">unpaid · raised {formatDate(item.createdAt)}</p>
                 </div>
                 <div className="flex items-center gap-2 sm:col-span-2 xl:col-span-1">
-                  {item.status === "awaiting_approval" ? <ApprovalButtons actionId={item.id} size="sm" /> : <span className="text-[12.5px] text-muted">by {item.approvedBy}</span>}
+                  {item.status === "awaiting_approval" ? <ApprovalButtons actionId={item.id} size="sm" readOnly={!canManage(context)} /> : <span className="text-[12.5px] text-muted">by {(item.approvedBy && names.get(item.approvedBy)) || item.approvedBy}</span>}
                   <RowLink href={`/cases/${item.collectionCaseId}`} label={`Open case for ${item.invoiceNumber}`} />
                 </div>
               </li>

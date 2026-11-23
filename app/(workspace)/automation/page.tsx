@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ActivityFeed } from "@/components/activity-feed";
 import { AutomationConsole } from "@/components/automation-console";
 import { PageHeader, SectionTitle } from "@/components/ui";
-import { getSessionContext } from "@/lib/auth";
+import { canManage, getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
 import { formatMoney } from "@/lib/domain/money";
 
@@ -18,19 +18,19 @@ const WORKFLOWS = [
 ];
 
 export default async function AutomationPage() {
-  const { companyId } = await getSessionContext();
-  const replyCases = (await repository.listCases(companyId, { statuses: ["reminder_sent", "overdue", "reminder_pending", "customer_replied"] })).slice(0, 25)
+  const context = await getPageContext();
+  const replyCases = (await repository.listCases(context, { statuses: ["reminder_sent", "overdue", "reminder_pending", "customer_replied"] })).slice(0, 25)
     .map((item) => ({ id: item.id, label: `${item.invoice.invoiceNumber} · ${item.customer.name} · ${formatMoney(item.invoice.amountOutstanding)}` }));
   const llm = Boolean(process.env.OPENAI_API_KEY && process.env.OPENAI_MODEL);
 
   return (
     <div className="space-y-6">
       <PageHeader eyebrow="Auto reminders" title="What runs on its own." muted="Runs daily by itself. Run it by hand to see exactly what it does." />
-      <AutomationConsole replyCases={replyCases} />
+      <AutomationConsole replyCases={replyCases} readOnly={!canManage(context)} />
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <article className="panel overflow-hidden">
           <SectionTitle title="What it did" helper="Every step, with its reason" />
-          <ActivityFeed events={await repository.listAudit(companyId, { limit: 10 })} empty="No jobs have run yet" />
+          <ActivityFeed events={await repository.listAudit(context, { limit: 10 })} empty="No jobs have run yet" />
         </article>
         <article className="panel overflow-hidden">
           <SectionTitle title="Connections" helper="What is set up right now" />

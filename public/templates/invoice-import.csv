@@ -1,3 +1,2 @@
-bill_number,customer_email,amount_due,due_date
-INV-1042,accounts@atlas-foods.example,84000,2026-09-20
-INV-1043,payables@cedar-logistics.example,1250000,2026-10-05
+bill_number,customer_email,amount_due,due_date,customer_name,region
+INV-1042,accounts42@bluebird-systems.example,84000,2026-09-20,Bluebird Systems 1,South

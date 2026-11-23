@@ -1,23 +1,19 @@
 import { NextResponse } from "next/server";
-import { repository } from "@/lib/data";
-import { DEMO_COMPANY_ID, createSeedData } from "@/lib/data/seed";
-import { SESSION_COOKIE, createSessionToken, sessionCookieOptions } from "@/lib/session";
+import { authMode } from "@/lib/auth";
+import { createSupabaseServerClient } from "@/lib/auth/supabase";
 
-/** One click into the fictional demo workspace, no account needed. Disable with KINDLYPAY_DEMO_LOGIN=off. */
+/**
+ * One click into the fictional demo workspace. In dev mode there is no sign-in, so it just opens the
+ * workspace. With Supabase Auth it signs into a shared demo account whose credentials stay on the server
+ * (KINDLYPAY_DEMO_EMAIL / KINDLYPAY_DEMO_PASSWORD, a user of the seeded demo company). Off with KINDLYPAY_DEMO_LOGIN=off.
+ */
 export async function GET(request: Request) {
-  if (process.env.KINDLYPAY_DEMO_LOGIN === "off") return NextResponse.redirect(new URL("/sign-in", request.url));
-  try {
-    await repository.today(DEMO_COMPANY_ID);
-    await repository.policy(DEMO_COMPANY_ID);
-  } catch {
-    // With a real database the demo company exists only after `npm run db:seed-demo`.
-    return NextResponse.redirect(new URL("/sign-in?demo=unavailable", request.url));
-  }
-  const seed = createSeedData();
-  const user = seed.users[0];
-  const response = NextResponse.redirect(new URL("/dashboard", request.url));
-  response.cookies.set(SESSION_COOKIE, createSessionToken({
-    userId: user.id, companyId: DEMO_COMPANY_ID, companyName: seed.companies[0].name, name: user.name, email: user.email, role: user.role, demo: true,
-  }, 60 * 60 * 8), { ...sessionCookieOptions, maxAge: 60 * 60 * 8 });
-  return response;
+  const to = (path: string) => NextResponse.redirect(new URL(path, request.url));
+  if (process.env.KINDLYPAY_DEMO_LOGIN === "off") return to("/sign-in");
+  if (authMode() === "dev") return to("/dashboard");
+  const email = process.env.KINDLYPAY_DEMO_EMAIL;
+  const password = process.env.KINDLYPAY_DEMO_PASSWORD;
+  if (!email || !password) return to("/sign-in?demo=unavailable");
+  const { error } = await (await createSupabaseServerClient()).auth.signInWithPassword({ email, password });
+  return to(error ? "/sign-in?demo=unavailable" : "/dashboard");
 }

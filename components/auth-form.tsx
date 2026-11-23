@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { CircleAlert, Eye, EyeOff } from "lucide-react";
+import { CircleAlert, Eye, EyeOff, MailCheck } from "lucide-react";
 import type { AuthState } from "@/app/(auth)/actions";
 import { Spinner } from "./ui";
 
@@ -38,6 +38,7 @@ export function AuthForm({ action, fields, submit, pendingLabel, hidden }: { act
             : <input id={field.name} name={field.name} type={field.type ?? "text"} autoComplete={field.autoComplete} required placeholder={field.placeholder} defaultValue={state.fields?.[field.name]} autoFocus={index === 0} className="input min-h-11" />}
         </label>
       ))}
+      {state.notice && <p role="status" className="animate-rise flex items-start gap-2 rounded-xl bg-brand-soft px-3.5 py-3 text-[13px] text-success"><MailCheck size={15} className="mt-0.5 shrink-0" aria-hidden="true" />{state.notice}</p>}
       {state.error && <p role="alert" className="animate-rise flex items-start gap-2 rounded-xl bg-[#fdecea] px-3.5 py-3 text-[13px] text-danger"><CircleAlert size={15} className="mt-0.5 shrink-0" aria-hidden="true" />{state.error}</p>}
       <Submit label={submit} pendingLabel={pendingLabel} />
     </form>

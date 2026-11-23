@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Ban, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 import { PageHeader, SectionTitle, StatusBadge } from "@/components/ui";
-import { getSessionContext } from "@/lib/auth";
+import { getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
 
 export const metadata: Metadata = { title: "Rules" };
@@ -15,7 +15,7 @@ const PRINCIPLES = [
 const NEVER = ["Approve discounts", "Waive balances", "Change payment terms", "Approve payment plans", "Start legal escalation", "Suspend accounts", "Silently edit financial records", "Close a case on a customer's word"];
 
 export default async function PolicyPage() {
-  const policy = await repository.policy((await getSessionContext()).companyId);
+  const policy = await repository.policy(await getPageContext());
   return (
     <div className="space-y-6">
       <PageHeader eyebrow="Rules" title="Your rules decide. AI only writes." muted="Here is exactly where the line sits." />

@@ -1,24 +1,26 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Bot, CheckCircle2, Cog, Flag, Mail, MessageSquareReply, UserRound } from "lucide-react";
+import { ArrowLeft, Bot, CalendarClock, CheckCircle2, Cog, Flag, Mail, MessageSquareReply, PhoneCall, UserRound } from "lucide-react";
 import { ApprovalButtons } from "@/components/approval-buttons";
+import { CaseAssignment, FollowUpForm } from "@/components/case-workflow";
 import { CountUp } from "@/components/motion";
 import { humanizeEvent } from "@/components/activity-feed";
 import { StatusBadge, cx, formatDate } from "@/components/ui";
-import { getSessionContext } from "@/lib/auth";
+import { canManage, getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
+import { CALL_OUTCOME_LABELS } from "@/lib/domain/collector";
 import { formatMoney } from "@/lib/domain/money";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
-  const item = await repository.getCase((await getSessionContext()).companyId, id);
+  const item = await repository.getCase(await getPageContext(), id);
   return { title: item ? `${item.invoice.invoiceNumber} · ${item.customer.name}` : "Case" };
 }
 
-type TimelineEvent = { at: string; title: string; detail?: string; kind: "system" | "outbound" | "inbound" | "kindlypay" | "payment" | "human"; quote?: boolean };
+type TimelineEvent = { at: string; title: string; detail?: string; kind: "system" | "outbound" | "inbound" | "kindlypay" | "payment" | "human" | "call"; quote?: boolean };
 const KIND = {
   system: { icon: Cog, tone: "bg-canvas text-muted border border-line" },
   outbound: { icon: Mail, tone: "bg-[#e9effc] text-info" },
@@ -26,24 +28,28 @@ const KIND = {
   kindlypay: { icon: Bot, tone: "bg-ink text-glow" },
   payment: { icon: CheckCircle2, tone: "bg-brand-soft text-success" },
   human: { icon: UserRound, tone: "bg-lime text-lime-ink" },
+  call: { icon: PhoneCall, tone: "bg-lime text-lime-ink" },
 } as const;
 
 export default async function CasePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { companyId } = await getSessionContext();
-  const item = await repository.getCase(companyId, id);
+  const context = await getPageContext();
+  const item = await repository.getCase(context, id);
   if (!item) notFound();
 
-  const audit = await repository.listAudit(companyId, { entityId: item.id });
+  const manager = canManage(context);
+  const [audit, users, today] = await Promise.all([repository.listAudit(context, { entityId: item.id }), repository.listUsers(context), repository.today(context)]);
   const actionIds = new Set(item.actions.map((action) => action.id));
-  const actionAudit = (await repository.listAudit(companyId, { entityType: "collection_action", limit: 500 })).filter((event) => actionIds.has(event.entityId));
+  const actionAudit = (await repository.listAudit(context, { entityType: "collection_action", limit: 500 })).filter((event) => actionIds.has(event.entityId));
   const timeline: TimelineEvent[] = [
     { at: `${item.invoice.invoiceDate}T00:00:00Z`, title: "Invoice issued", detail: `${item.invoice.invoiceNumber} for ${formatMoney(item.invoice.amount, item.invoice.currency)}, due ${formatDate(item.invoice.dueDate)}`, kind: "system" as const },
     { at: `${item.invoice.dueDate}T00:00:00Z`, title: "Invoice fell due", kind: "system" as const },
     ...item.communications.map((message) => ({ at: message.receivedAt || message.processedAt || "", title: message.direction === "outbound" ? `Email sent · ${message.subject}` : `Customer replied · ${message.subject}`, detail: message.body, kind: message.direction, quote: true }) as TimelineEvent),
     ...item.payments.map((payment) => ({ at: `${payment.paymentDate}T09:00:00Z`, title: `Payment received · ${formatMoney(payment.amount)}`, detail: `${payment.paymentReference} · ${payment.matchNotes ?? "matched"}`, kind: "payment" }) as TimelineEvent),
+    // Follow-ups appear once, from the log itself (their audit events carry the same facts).
+    ...item.followUps.map((followUp) => ({ at: followUp.createdAt, title: `Call · ${CALL_OUTCOME_LABELS[followUp.outcome]}${followUp.createdByName ? ` · ${followUp.createdByName}` : ""}`, detail: [followUp.note, followUp.nextFollowUpDate ? `Next follow-up ${formatDate(followUp.nextFollowUpDate)}` : ""].filter(Boolean).join("\n") || undefined, kind: "call", quote: Boolean(followUp.note) }) as TimelineEvent),
     ...[...audit, ...actionAudit]
-      .filter((event) => !["reminder_sent"].includes(event.eventType))
+      .filter((event) => !["reminder_sent", "follow_up_logged"].includes(event.eventType))
       .map((event) => ({ at: event.createdAt, title: event.eventType === "case_status_changed" ? `Status → ${String(event.dataSnapshot.to).replaceAll("_", " ")}` : humanizeEvent(event.eventType), detail: event.reason, kind: event.actorType === "human" ? "human" : event.actorType === "kindlypay" ? "kindlypay" : "system" }) as TimelineEvent),
   ].sort((a, b) => a.at.localeCompare(b.at));
 
@@ -61,7 +67,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
             <StatusBadge value={item.status} />
             <StatusBadge value={item.priority} />
           </div>
-          <h1 className="title mt-3">{item.customer.name}<span className="title-muted block">{item.daysOverdue} days late · handled by {item.assignedTo ?? "no one yet"}</span></h1>
+          <h1 className="title mt-3">{item.customer.name}<span className="title-muted block">{item.daysOverdue} days late · looked after by {item.assigneeName ?? (item.assignedTo ? "an unknown user" : "no one yet")}</span></h1>
         </div>
         <div className="relative overflow-hidden rounded-2xl bg-ink p-5 text-white">
           <div className="pointer-events-none absolute -right-10 -top-16 size-40 rounded-full bg-glow/25 blur-3xl" aria-hidden="true" />
@@ -109,7 +115,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
               <p className="eyebrow flex items-center gap-2 text-[10.5px] text-[#8a5304]"><Flag size={13} aria-hidden="true" /> Your decision</p>
               <h2 className="mt-3 text-[15px] font-medium leading-snug text-ink">{action.message}</h2>
               <p className="mb-4 mt-1.5 text-[13px] leading-5 text-[#6b4a10]">{action.reason}</p>
-              <ApprovalButtons actionId={action.id} />
+              <ApprovalButtons actionId={action.id} readOnly={!manager} />
             </article>
           ))}
 
@@ -118,6 +124,20 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
             <p className="mt-3 text-[19px] font-medium leading-tight tracking-[-0.03em]">{item.nextAction}</p>
             <p className="mt-3 text-[12.5px] opacity-75">{item.nextActionAt ? `Scheduled ${formatDate(item.nextActionAt)}` : "Not scheduled"}</p>
           </article>
+
+          {item.lastFollowUp?.nextFollowUpDate && (
+            <article className={cx("panel flex items-start gap-3 p-5", item.lastFollowUp.nextFollowUpDate <= today && "border-[#f0d79a] bg-[#fdf7e6]")}>
+              <CalendarClock size={18} className="mt-0.5 shrink-0 text-warning" aria-hidden="true" />
+              <div>
+                <p className="eyebrow">Next follow-up</p>
+                <p className="mt-2 text-[17px] font-medium tracking-[-0.02em]">{item.lastFollowUp.nextFollowUpDate === today ? "Today" : formatDate(item.lastFollowUp.nextFollowUpDate)}{item.lastFollowUp.nextFollowUpDate < today && <span className="ml-2 text-[13px] font-normal text-danger">overdue</span>}</p>
+                <p className="mt-1 text-[12.5px] text-muted">Planned after the last call ({CALL_OUTCOME_LABELS[item.lastFollowUp.outcome].toLowerCase()})</p>
+              </div>
+            </article>
+          )}
+
+          <CaseAssignment caseId={item.id} assignedTo={item.assignedTo} assigneeName={item.assigneeName} users={users} currentUserId={context.userId} readOnly={!manager} />
+          <FollowUpForm caseId={item.id} today={today} readOnly={!manager} />
 
           {activePromise && (
             <article className="panel p-5">

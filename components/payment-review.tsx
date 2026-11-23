@@ -3,11 +3,11 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
-import { Spinner, cx } from "./ui";
+import { ReadOnlyNote, Spinner, cx } from "./ui";
 
 export interface ReviewCandidate { invoiceId: string; invoiceNumber: string; customerName: string; outstanding: string; dueDate: string; reason: string }
 
-export function PaymentReview({ paymentId, candidates }: { paymentId: string; candidates: ReviewCandidate[] }) {
+export function PaymentReview({ paymentId, candidates, readOnly = false }: { paymentId: string; candidates: ReviewCandidate[]; readOnly?: boolean }) {
   const [selected, setSelected] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [applied, setApplied] = useState(false);
@@ -32,7 +32,7 @@ export function PaymentReview({ paymentId, candidates }: { paymentId: string; ca
 
   if (candidates.length === 0) return <p className="text-[13px] text-muted">No unpaid bill fits this payment. Leave it unmatched and ask the payer what it was for.</p>;
   return (
-    <fieldset>
+    <fieldset disabled={readOnly}>
       <legend className="eyebrow mb-3">Which bill is this for?</legend>
       <div className="stagger-in space-y-2">
         {candidates.map((candidate) => (
@@ -47,10 +47,12 @@ export function PaymentReview({ paymentId, candidates }: { paymentId: string; ca
         ))}
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        {applied
-          ? <span role="status" className="animate-pop inline-flex min-h-10 items-center gap-2 rounded-full bg-brand-soft px-4 text-[13px] font-medium text-success"><CheckCircle2 size={15} aria-hidden="true" /> Matched</span>
-          : <button type="button" disabled={!selected || busy} onClick={apply} className="btn-primary">{busy && <Spinner />}{busy ? "Matching…" : "Match to this bill"}</button>}
-        <p className="text-[12.5px] text-muted">This updates the bill, closes it if fully paid, and is saved in the history.</p>
+        {readOnly ? <ReadOnlyNote>Read-only access. A manager matches payments.</ReadOnlyNote> : <>
+                {applied
+            ? <span role="status" className="animate-pop inline-flex min-h-10 items-center gap-2 rounded-full bg-brand-soft px-4 text-[13px] font-medium text-success"><CheckCircle2 size={15} aria-hidden="true" /> Matched</span>
+            : <button type="button" disabled={!selected || busy} onClick={apply} className="btn-primary">{busy && <Spinner />}{busy ? "Matching…" : "Match to this bill"}</button>}
+          <p className="text-[12.5px] text-muted">This updates the bill, closes it if fully paid, and is saved in the history.</p>
+        </>}
       </div>
       {error && <p role="alert" className="animate-rise mt-3 text-[13px] text-danger">{error}</p>}
     </fieldset>

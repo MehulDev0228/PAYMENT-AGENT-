@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { AuthForm } from "@/components/auth-form";
 import { PLANS } from "@/components/marketing/plans";
 import { signUpAction } from "../actions";
+import { authPageStatus } from "../status";
 
 export const metadata: Metadata = { title: "Create your account" };
+export const dynamic = "force-dynamic";
 
 export default async function SignUpPage({ searchParams }: { searchParams: Promise<{ plan?: string }> }) {
   const { plan } = await searchParams;
+  if (await authPageStatus() === "no_access") redirect("/sign-in?error=no_access");
   const chosen = PLANS.find((item) => item.key === plan) ?? PLANS[1];
   return (
     <div className="animate-rise">
@@ -25,7 +29,7 @@ export default async function SignUpPage({ searchParams }: { searchParams: Promi
           fields={[
             { name: "companyName", label: "Company name", autoComplete: "organization", placeholder: "CityBond Traders" },
             { name: "name", label: "Your name", autoComplete: "name", placeholder: "Your full name" },
-            { name: "email", label: "Work email", type: "email", autoComplete: "email", placeholder: "you@company.com" },
+            { name: "email", label: "Email", type: "email", autoComplete: "email", placeholder: "you@example.com" },
             { name: "password", label: "Password", type: "password", autoComplete: "new-password", placeholder: "At least 8 characters" },
           ]} />
       </div>

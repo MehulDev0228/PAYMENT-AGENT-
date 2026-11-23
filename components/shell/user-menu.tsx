@@ -7,10 +7,10 @@ import { signOutAction } from "@/app/(auth)/actions";
 import { cx } from "@/components/ui";
 import { startTour } from "./product-tour";
 
-export interface ShellUser { name: string; email: string; companyName: string; role: string; demo?: boolean }
+export interface ShellUser { name: string; email: string; companyName: string; role: string; demo?: boolean; devMode?: boolean; regions?: string[] | null }
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]!.toUpperCase()).join("") || "?";
-const ROLE_LABEL: Record<string, string> = { admin: "Owner", finance_manager: "Finance manager", collection_manager: "Collections", viewer: "Viewer" };
+const ROLE_LABEL: Record<string, string> = { admin: "Owner", finance_manager: "Finance manager", collection_manager: "Collections", viewer: "Viewer · read-only" };
 
 export function UserMenu({ user }: { user: ShellUser }) {
   const [open, setOpen] = useState(false);
@@ -40,14 +40,17 @@ export function UserMenu({ user }: { user: ShellUser }) {
             <p className="truncate text-[13.5px] font-medium">{user.name}</p>
             <p className="truncate text-[12px] text-muted">{user.email}</p>
             <p className="eyebrow mt-2 text-[10px]">{ROLE_LABEL[user.role] ?? user.role} · {user.companyName}</p>
+            {user.regions && <p className="mt-1 text-[12px] text-muted">Regions: {user.regions.join(", ")}</p>}
           </div>
           <div className="p-1.5">
             <button type="button" role="menuitem" onClick={() => { setOpen(false); startTour(); }} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13.5px] hover:bg-canvas"><Compass size={15} className="text-muted" aria-hidden="true" /> Take the tour</button>
             <Link href="/guide" role="menuitem" onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13.5px] hover:bg-canvas"><BookOpen size={15} className="text-muted" aria-hidden="true" /> How KindlyPay works</Link>
           </div>
-          <form action={signOutAction} className="border-t border-line p-1.5">
-            <button type="submit" role="menuitem" className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13.5px] text-danger hover:bg-[#fdecea]"><LogOut size={15} aria-hidden="true" /> Sign out</button>
-          </form>
+          {user.devMode
+            ? <p className="border-t border-line px-4 py-3 text-[12px] leading-5 text-muted">Dev mode: sign-in is off on this machine, so there is nothing to sign out of.</p>
+            : <form action={signOutAction} className="border-t border-line p-1.5">
+                <button type="submit" role="menuitem" className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13.5px] text-danger hover:bg-[#fdecea]"><LogOut size={15} aria-hidden="true" /> Sign out</button>
+              </form>}
         </div>
       )}
     </div>
