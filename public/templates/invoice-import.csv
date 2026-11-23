@@ -1,2 +1,2 @@
-invoice_number,customer_name,customer_email,invoice_date,due_date,amount,currency,outstanding,customer_code,customer_phone,region,account_manager
-INV-1042,Bluebird Systems 1,accounts42@bluebird-systems.example,2026-08-21,2026-09-20,84000,INR,84000,CUS-0042,+91 90000 00041,South,Karan Mehta
+bill_number,customer_email,amount_due,due_date,customer_name,region
+INV-1042,accounts42@bluebird-systems.example,84000,2026-09-20,Bluebird Systems 1,South

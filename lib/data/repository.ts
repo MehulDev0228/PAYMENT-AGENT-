@@ -4,14 +4,15 @@ import type { AgeingReport, ApprovalItem, AuditEvent, CallOutcome, CaseDetail, C
 import type { ReplyClassificationInput } from "@/lib/domain/reply-outcome";
 import { customerView, type CollectionsEngine } from "./engine";
 
+/** One unpaid bill. Only the first four fields are required; the rest are filled in when missing. */
 export interface InvoiceImportRow {
   invoice_number: string;
-  customer_name: string;
   customer_email: string;
-  invoice_date: string;
-  due_date: string;
   amount: number;
-  currency: string;
+  due_date: string;
+  customer_name?: string;
+  invoice_date?: string;
+  currency?: string;
   customer_code?: string;
   customer_phone?: string;
   region?: string;
@@ -67,6 +68,8 @@ export interface ImportResult {
   rejected: number;
   reviewRequired: number;
   errors: Array<{ row: number; message: string }>;
+  /** Columns in the file that KindlyPay does not use; they were dropped and never stored. */
+  ignoredColumns?: string[];
 }
 
 export interface ReplyResult {
@@ -121,7 +124,11 @@ export function withRegion(scope: DataScope, region?: string | null): DataScope 
   return { companyId: scope.companyId, regions: inRegions(wanted, scope.regions) ? [wanted] : [] };
 }
 
-export interface AeraRepository {
+export interface NewCompany { id: string; name: string; currency?: string; timezone?: string }
+
+export interface KindlyPayRepository {
+  /** Creates an empty company with the default collection policy, ready for its first import. */
+  createCompany(input: NewCompany): Promise<void>;
   /** The business date the repository evaluates rules against (fixed in demo mode). */
   today(scope: DataScope): Promise<string>;
   overview(scope: DataScope): Promise<CollectionOverview>;
@@ -187,7 +194,7 @@ export type EngineRunner = <T>(companyId: string, mode: "read" | "write", fn: (e
  * Region scope is applied here, once for every adapter: the engine runs on the scope's view of the working set,
  * so it cannot read or change a row outside the caller's regions.
  */
-export function createRepository(runCompany: EngineRunner, readAudit: AuditReader): AeraRepository {
+export function createRepository(runCompany: EngineRunner, readAudit: AuditReader, createCompany: KindlyPayRepository["createCompany"]): KindlyPayRepository {
   const run = <T>(scope: DataScope, mode: "read" | "write", fn: (engine: CollectionsEngine) => T): Promise<T> =>
     runCompany(scope.companyId, mode, (engine) => {
       const { regions } = scope;
@@ -199,6 +206,7 @@ export function createRepository(runCompany: EngineRunner, readAudit: AuditReade
     });
 
   return {
+    createCompany,
     today: (s) => run(s, "read", (e) => e.today()),
     overview: (s) => run(s, "read", (e) => e.overview(s.companyId)),
     policy: (s) => run(s, "read", (e) => e.policy(s.companyId)),

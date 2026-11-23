@@ -23,17 +23,20 @@ export async function ensureAuthShim(db: SqlClient) {
   `);
 }
 
-/** Applies supabase/migrations/*.sql in order, once each, recording them in public.aera_schema_migrations. */
+/** Applies supabase/migrations/*.sql in order, once each, recording them in public.kindlypay_schema_migrations. */
 export async function applyMigrations(db: SqlDatabase, dir = MIGRATIONS_DIR): Promise<string[]> {
   await ensureAuthShim(db);
-  const [tracker] = await db.query<{ present: boolean }>("select to_regclass('public.aera_schema_migrations') is not null as present");
+  // Databases migrated before the AERA → KindlyPay rename keep their history under the old tracker name.
+  const [legacy] = await db.query<{ present: boolean }>("select to_regclass('public.aera_schema_migrations') is not null and to_regclass('public.kindlypay_schema_migrations') is null as present");
+  if (legacy.present) await db.exec("alter table public.aera_schema_migrations rename to kindlypay_schema_migrations");
+  const [tracker] = await db.query<{ present: boolean }>("select to_regclass('public.kindlypay_schema_migrations') is not null as present");
   if (!tracker.present) {
-    await db.exec("create table public.aera_schema_migrations (name text primary key, applied_at timestamptz not null default now())");
+    await db.exec("create table public.kindlypay_schema_migrations (name text primary key, applied_at timestamptz not null default now())");
     // A database where 001 was pasted into the Supabase SQL editor already has the base schema.
     const [base] = await db.query<{ present: boolean }>("select to_regclass('public.companies') is not null as present");
-    if (base.present) await db.query("insert into public.aera_schema_migrations (name) values ('001_initial.sql')");
+    if (base.present) await db.query("insert into public.kindlypay_schema_migrations (name) values ('001_initial.sql')");
   }
-  const applied = new Set((await db.query<{ name: string }>("select name from public.aera_schema_migrations")).map((row) => row.name));
+  const applied = new Set((await db.query<{ name: string }>("select name from public.kindlypay_schema_migrations")).map((row) => row.name));
   const files = (await readdir(dir)).filter((name) => name.endsWith(".sql")).sort();
   const ran: string[] = [];
   for (const name of files) {
@@ -41,7 +44,7 @@ export async function applyMigrations(db: SqlDatabase, dir = MIGRATIONS_DIR): Pr
     const sql = await readFile(path.join(dir, name), "utf8");
     await db.transaction(async (tx) => {
       await tx.exec(sql);
-      await tx.query("insert into public.aera_schema_migrations (name) values ($1)", [name]);
+      await tx.query("insert into public.kindlypay_schema_migrations (name) values ($1)", [name]);
     });
     ran.push(name);
   }
@@ -70,7 +73,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Maps the synthetic seed's readable ids ("inv-0042") to stable uuids so it fits the uuid schema. */
 function seedUuid(value: string): string {
   if (UUID.test(value)) return value;
-  const hex = createHash("md5").update(`aera-seed:${value}`).digest("hex");
+  const hex = createHash("md5").update(`kindlypay-seed:${value}`).digest("hex");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 

@@ -9,7 +9,7 @@ type Message = { role: "user" | "assistant"; text: string; tool?: string; table?
 
 const PROMPTS = ["How much is currently overdue?", "Which customers have the highest exposure?", "Which payment promises were missed?", "What decisions are waiting for approval?", "Show the aging breakdown", "What is the status of INV-1042?"];
 
-export function AskAera() {
+export function AskKindlyPay() {
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [busy, setBusy] = useState(false);
@@ -39,14 +39,14 @@ export function AskAera() {
       <section className="panel flex min-h-[620px] flex-col overflow-hidden">
         <div aria-live="polite" className="scrollbar flex-1 space-y-6 overflow-y-auto p-5 md:p-7">
           {messages.length === 0 && (
-            <div className="flex h-full flex-col items-center justify-center py-16 text-center">
+            <div className="animate-rise flex h-full flex-col items-center justify-center py-16 text-center">
               <span className="grid size-12 place-items-center rounded-2xl bg-ink text-glow"><Bot size={22} aria-hidden="true" /></span>
               <h2 className="mt-5 text-[22px] font-medium tracking-[-0.035em]">Ask a factual question.<span className="block text-muted">Get an answer with its source.</span></h2>
-              <p className="mt-3 max-w-md text-[13.5px] leading-6 text-muted">Every answer comes from a named, read-only query over your receivables. AERA does not guess numbers and makes no financial decisions here.</p>
+              <p className="mt-3 max-w-md text-[13.5px] leading-6 text-muted">Every answer comes from a named, read-only query over your receivables. KindlyPay does not guess numbers and makes no financial decisions here.</p>
             </div>
           )}
           {messages.map((message, index) => (
-            <div key={index} className={cx("flex gap-3", message.role === "user" ? "justify-end" : "justify-start")}>
+            <div key={index} className={cx("flex gap-3", message.role === "user" ? "animate-slide-in-right justify-end" : "animate-rise justify-start")}>
               {message.role === "assistant" && <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-ink text-glow"><Bot size={15} aria-hidden="true" /></span>}
               <div className={cx("max-w-[min(640px,85%)] text-[14px] leading-6", message.role === "user" ? "rounded-2xl rounded-br-md bg-ink px-4 py-2.5 text-white" : "min-w-0 flex-1")}>
                 <p className={cx(message.error && "text-danger")}>{message.text}</p>
@@ -62,27 +62,33 @@ export function AskAera() {
               </div>
             </div>
           ))}
-          {busy && <div className="flex items-center gap-3"><span className="grid size-8 place-items-center rounded-[10px] bg-ink text-glow"><Bot size={15} aria-hidden="true" /></span><span className="animate-pulse-dot font-mono text-[12px] text-muted">querying verified records…</span></div>}
+          {busy && (
+            <div className="animate-rise flex items-center gap-3" role="status">
+              <span className="grid size-8 place-items-center rounded-[10px] bg-ink text-glow"><Bot size={15} aria-hidden="true" /></span>
+              <span className="flex items-center gap-1 rounded-2xl bg-canvas px-3.5 py-3" aria-hidden="true">{[0, 150, 300].map((delay) => <span key={delay} className="animate-typing size-1.5 rounded-full bg-muted" style={{ animationDelay: `${delay}ms` }} />)}</span>
+              <span className="font-mono text-[12px] text-muted">querying verified records…</span>
+            </div>
+          )}
           <div ref={endRef} />
         </div>
         <form onSubmit={submit} className="border-t border-line p-3 md:p-4">
           <div className="flex items-center gap-2 rounded-2xl border border-line bg-canvas p-1.5 pl-4 transition-colors focus-within:border-ink">
-            <label className="sr-only" htmlFor="aera-question">Question about receivables</label>
-            <input id="aera-question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={500} className="min-h-10 flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#8a909c]" placeholder="How much is overdue by more than 30 days?" />
-            <button disabled={busy || question.trim().length < 3} aria-label="Send question" className="grid size-10 place-items-center rounded-xl bg-ink text-white transition-opacity disabled:opacity-30"><ArrowUp size={18} /></button>
+            <label className="sr-only" htmlFor="kindlypay-question">Question about receivables</label>
+            <input id="kindlypay-question" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={500} className="min-h-10 flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#8a909c]" placeholder="How much is overdue by more than 30 days?" />
+            <button disabled={busy || question.trim().length < 3} aria-label="Send question" className="grid size-10 place-items-center rounded-xl bg-ink text-white transition-[opacity,transform] duration-200 hover:-translate-y-px active:scale-95 disabled:opacity-30"><ArrowUp size={18} /></button>
           </div>
         </form>
       </section>
       <aside className="space-y-4">
         <section className="panel p-5">
           <p className="eyebrow">Try asking</p>
-          <div className="mt-4 space-y-1.5">
+          <div className="stagger-in mt-4 space-y-1.5">
             {PROMPTS.map((prompt) => <button key={prompt} type="button" onClick={() => ask(prompt)} disabled={busy} className="w-full rounded-xl border border-line px-3.5 py-2.5 text-left text-[13.5px] leading-5 transition-colors hover:border-ink hover:bg-canvas">{prompt}</button>)}
           </div>
         </section>
         <section className="rounded-2xl bg-lime p-5 text-lime-ink">
-          <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] opacity-70">Data boundary</p>
-          <p className="mt-3 text-[14px] leading-6">Only the minimum query result reaches the answer layer. AERA never sends your whole ledger to a model.</p>
+          <p className="eyebrow text-[10.5px] text-lime-ink/70">Data boundary</p>
+          <p className="mt-3 text-[14px] leading-6">Only the minimum query result reaches the answer layer. KindlyPay never sends your whole ledger to a model.</p>
         </section>
       </aside>
     </div>

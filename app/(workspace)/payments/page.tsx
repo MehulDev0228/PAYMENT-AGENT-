@@ -11,11 +11,11 @@ import { withRegion } from "@/lib/data/repository";
 import { formatMoney } from "@/lib/domain/money";
 import type { Payment } from "@/lib/domain/types";
 
-export const metadata: Metadata = { title: "Payments" };
+export const metadata: Metadata = { title: "Money in" };
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 30;
-const VIEWS: Array<{ key: "all" | Payment["matchStatus"]; label: string }> = [{ key: "all", label: "All" }, { key: "matched", label: "Matched" }, { key: "payment_match_review_required", label: "Needs review" }, { key: "unmatched", label: "Unmatched" }];
+const VIEWS: Array<{ key: "all" | Payment["matchStatus"]; label: string }> = [{ key: "all", label: "All" }, { key: "matched", label: "Matched" }, { key: "payment_match_review_required", label: "Check match" }, { key: "unmatched", label: "Not matched" }];
 
 export default async function PaymentsPage({ searchParams }: { searchParams: Promise<{ status?: string; region?: string; page?: string }> }) {
   const params = await searchParams;
@@ -34,10 +34,10 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Reconciliation" title="Every rupee, accounted for." muted="Ambiguous bank entries are never applied on a guess."
-        actions={<><ExportLinks report="payments" query={{ status: view === "all" ? undefined : view, region }} />{context.regions === null && <Link href="/imports" className="btn-outline"><FileUp size={15} /> Import bank file</Link>}</>}>
+      <PageHeader eyebrow="Money in" title="Every rupee, matched to its bill." muted="If a payment could fit two bills, it waits for you. No guessing."
+        actions={<><ExportLinks report="payments" query={{ status: view === "all" ? undefined : view, region }} />{context.regions === null && <Link href="/imports" className="btn-outline"><FileUp size={15} /> Upload bank statement</Link>}</>}>
         <RegionFilter regions={regions} active={region} hrefFor={(next) => href(view, 1, next)} />
-        {(region || context.regions !== null) && <p className="mt-3 max-w-xl text-[13px] text-muted">Payments not yet tied to a customer belong to no region. {context.regions === null ? "Clear the region filter to see them." : "A user with access to every region matches them."}</p>}
+        {(region || context.regions !== null) && <p className="mt-3 max-w-xl text-[13px] text-muted">Payments not yet tied to a customer belong to no region. {context.regions === null ? "Clear the region filter to see them." : "Someone with access to every region matches them."}</p>}
       </PageHeader>
 
       {review.length > 0 && (
@@ -66,13 +66,13 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
         {rows.length === 0 ? <EmptyState icon={HandCoins} title="No payments in this view" /> : (
           <div className="scrollbar overflow-x-auto">
             <table className="table-base min-w-[820px]">
-              <thead><tr><th scope="col">Reference</th><th scope="col">Date</th><th scope="col">Applied to</th><th scope="col" className="text-right">Amount</th><th scope="col">Match</th><th scope="col">Notes</th></tr></thead>
+              <thead><tr><th scope="col">Reference</th><th scope="col">Date</th><th scope="col">Matched to</th><th scope="col" className="text-right">Amount</th><th scope="col">Status</th><th scope="col">Notes</th></tr></thead>
               <tbody>
                 {rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((payment) => (
                   <tr key={payment.id}>
                     <td className="font-mono text-[12px]">{payment.paymentReference}</td>
                     <td className="tabular text-muted">{formatDate(payment.paymentDate)}</td>
-                    <td>{payment.invoiceNumber ? <><span className="block font-medium">{payment.customerName}</span><span className="font-mono text-[11.5px] text-muted">{payment.invoiceNumber}</span></> : <span className="text-muted">Not applied</span>}</td>
+                    <td>{payment.invoiceNumber ? <><span className="block font-medium">{payment.customerName}</span><span className="font-mono text-[11.5px] text-muted">{payment.invoiceNumber}</span></> : <span className="text-muted">Not matched yet</span>}</td>
                     <td className="tabular text-right font-medium">{formatMoney(payment.amount)}</td>
                     <td><StatusBadge value={payment.matchStatus} /></td>
                     <td className="max-w-[260px] truncate text-[13px] text-muted">{payment.matchNotes}</td>

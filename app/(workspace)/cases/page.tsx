@@ -12,7 +12,7 @@ import { CASE_VIEWS, isCaseView, type CaseView } from "@/lib/domain/case-views";
 import { resolveAssigneeFilter } from "@/lib/domain/collector";
 import type { CollectionCase } from "@/lib/domain/types";
 
-export const metadata: Metadata = { title: "Cases" };
+export const metadata: Metadata = { title: "Unpaid bills" };
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 25;
@@ -54,12 +54,12 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Operational queue" title={mine ? "My cases." : "Collection cases."} muted={mine ? "The invoices you own, with their next step." : "Every invoice that needs attention, with its next step."}
+      <PageHeader eyebrow="Unpaid bills" title={mine ? "Your bills to chase." : "Who still owes you."} muted={mine ? "The bills you look after, with what happens next." : "Every unpaid bill, with what happens next."}
         actions={<ExportLinks report="cases" query={{ view: view === "open" ? undefined : view, q, priority, region, assignee }} />}>
         <RegionFilter regions={regions} active={region} hrefFor={(next) => href({ region: next, page: undefined })} />
       </PageHeader>
-      <nav aria-label="Case owner" className="inline-flex rounded-xl border border-line bg-white p-1">
-        {[{ label: "All cases", value: undefined, count: undefined }, { label: "My cases", value: "me", count: myOpenCount }].map((option) => {
+      <nav aria-label="Who looks after the bill" className="inline-flex rounded-xl border border-line bg-white p-1">
+        {[{ label: "Everyone's", value: undefined, count: undefined }, { label: "Mine", value: "me", count: myOpenCount }].map((option) => {
           const active = (option.value === "me") === mine;
           return (
             <Link key={option.label} href={href({ assignee: option.value, page: undefined })} aria-current={active ? "page" : undefined}
@@ -77,32 +77,32 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
         <form action="/cases" className="flex flex-wrap gap-2 border-b border-line px-5 py-3" role="search">
             {view !== "open" && <input type="hidden" name="view" value={view} />}
             {region && <input type="hidden" name="region" value={region} />}
-            <label className="relative">
-              <span className="sr-only">Search cases</span>
+            <label className="relative flex-1 sm:max-w-sm">
+              <span className="sr-only">Search unpaid bills</span>
               <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
-              <input name="q" defaultValue={q} placeholder="Customer, invoice or code" className="input w-[min(260px,70vw)] pl-9" />
+              <input name="q" defaultValue={q} placeholder="Customer or bill number" className="input pl-9" />
             </label>
             <label>
               <span className="sr-only">Priority</span>
               <select name="priority" defaultValue={priority ?? ""} className="input w-auto pr-8">
-                <option value="">Any priority</option>
-                {PRIORITIES.map((item) => <option key={item} value={item} className="capitalize">{item}</option>)}
+                <option value="">Any urgency</option>
+                {PRIORITIES.map((item) => <option key={item} value={item}>{item.charAt(0).toUpperCase() + item.slice(1)}</option>)}
               </select>
             </label>
             <label>
-              <span className="sr-only">Assigned to</span>
+              <span className="sr-only">Looked after by</span>
               <select name="assignee" defaultValue={assignee ?? ""} className="input w-auto pr-8">
                 <option value="">Anyone</option>
                 <option value="me">Me</option>
-                <option value="none">Unassigned</option>
+                <option value="none">No one yet</option>
                 {users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
               </select>
             </label>
-            <button className="btn-primary" type="submit">Apply</button>
-            {(q || priority || assignee) && <a href={href({ q: undefined, priority: undefined, assignee: undefined, page: undefined })} className="btn-ghost">Clear</a>}
+            <button className="btn-primary" type="submit">Search</button>
+            {(q || priority || assignee) && <Link href={href({ q: undefined, priority: undefined, assignee: undefined, page: undefined })} className="btn-ghost">Clear</Link>}
         </form>
         <CasesTable cases={rows} />
-        <Pagination page={page} pageCount={pageCount} total={all.length} label="cases" hrefFor={(next) => href({ page: String(next) })} />
+        <Pagination page={page} pageCount={pageCount} total={all.length} label="bills" hrefFor={(next) => href({ page: String(next) })} />
       </div>
     </div>
   );

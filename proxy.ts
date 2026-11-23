@@ -3,11 +3,12 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { resolveAuthMode, type AuthEnv } from "@/lib/auth/context";
 
-const PUBLIC_PAGES = new Set(["/", "/login"]);
+/** Open to signed-out visitors. The auth pages check the session themselves. */
+const PUBLIC_PATHS = [/^\/$/, /^\/sign-in$/, /^\/sign-up$/, /^\/auth\/confirm$/, /^\/api\/auth\//];
 
 /**
  * Refreshes the Supabase session cookie and turns away signed-out requests before they reach the app:
- * pages redirect to /login, API routes answer 401. Routes still derive the full identity themselves
+ * pages redirect to /sign-in, API routes answer 401. Routes still derive the full identity themselves
  * (lib/auth), which is also where the n8n bearer token is verified.
  */
 export async function proxy(request: NextRequest) {
@@ -26,16 +27,16 @@ export async function proxy(request: NextRequest) {
   });
   const { data } = await supabase.auth.getClaims();
   const { pathname, search } = request.nextUrl;
-  if (data?.claims?.sub || PUBLIC_PAGES.has(pathname)) return response;
+  if (data?.claims?.sub || PUBLIC_PATHS.some((pattern) => pattern.test(pathname))) return response;
 
   if (pathname.startsWith("/api/")) {
     // n8n calls carry a bearer token instead of a session; the route checks it.
     if (/^Bearer\s/i.test(request.headers.get("authorization") ?? "")) return response;
     return NextResponse.json({ error: "Sign in to continue" }, { status: 401 });
   }
-  const login = new URL("/login", request.url);
-  login.searchParams.set("next", `${pathname}${search}`);
-  return NextResponse.redirect(login);
+  const signIn = new URL("/sign-in", request.url);
+  signIn.searchParams.set("next", `${pathname}${search}`);
+  return NextResponse.redirect(signIn);
 }
 
 export const config = {

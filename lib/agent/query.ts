@@ -1,6 +1,6 @@
 import { formatMoney } from "@/lib/domain/money";
 import { OPEN_CASE_STATUSES } from "@/lib/domain/case-views";
-import type { AeraRepository, DataScope } from "@/lib/data/repository";
+import type { KindlyPayRepository, DataScope } from "@/lib/data/repository";
 
 export interface QueryTable {
   columns: string[];
@@ -18,7 +18,7 @@ export interface QueryAnswer {
  * Read-only question router. Each branch calls exactly one structured tool and
  * phrases the result; numbers always come from the repository, never from a model.
  */
-export async function answerCollectionQuery(repository: AeraRepository, scope: DataScope, question: string): Promise<QueryAnswer> {
+export async function answerCollectionQuery(repository: KindlyPayRepository, scope: DataScope, question: string): Promise<QueryAnswer> {
   const lower = question.toLowerCase();
   const overview = await repository.overview(scope);
 

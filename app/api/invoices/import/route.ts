@@ -13,9 +13,9 @@ export async function POST(request: Request) {
     const form = await request.formData(); const file = form.get("file");
     if (!(file instanceof File)) return NextResponse.json({ error: "Attach a CSV or XLSX file using the field name 'file'." }, { status: 400 });
     const raw = await parseWorkbook(file);
-    if (!raw.length) return NextResponse.json({ error: "The file has no invoice rows." }, { status: 400 });
-    const { rows, invalidRows } = parseInvoiceRows(raw);
+    if (!raw.length) return NextResponse.json({ error: "The file has no bill rows." }, { status: 400 });
+    const { rows, invalidRows, ignored } = parseInvoiceRows(raw);
     const options = { dryRun: form.get("mode") === "preview", fullLedger: form.get("fullLedger") === "true", invalidRows };
-    return NextResponse.json(await repository.importInvoices(context, rows, context.userId, options));
-  } catch (error) { return apiError(error, "Import failed"); }
+    return NextResponse.json({ ...(await repository.importInvoices(context, rows, context.userId, options)), ignoredColumns: ignored });
+  } catch (error) { return apiError(error, "Upload failed"); }
 }

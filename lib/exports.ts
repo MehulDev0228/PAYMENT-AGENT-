@@ -1,5 +1,5 @@
 import writeXlsxFile, { type Cell, type Sheet } from "write-excel-file/node";
-import { withRegion, type AeraRepository, type DataScope } from "@/lib/data/repository";
+import { withRegion, type KindlyPayRepository, type DataScope } from "@/lib/data/repository";
 import { CASE_VIEWS, isCaseView } from "@/lib/domain/case-views";
 import { AGEING_BUCKETS, CALL_OUTCOME_LABELS, resolveAssigneeFilter } from "@/lib/domain/collector";
 import type { AgeingRow, CaseListItem, CollectionCase, CustomerSummary, Payment, PaymentListItem } from "@/lib/domain/types";
@@ -92,7 +92,7 @@ const AGEING_COLUMNS: Array<ExportColumn<AgeingRow>> = [
 
 /** Builds a report from the same filters the page uses (query string of the page URL). */
 /** `scope` is the caller's context: a regional user exports only their regions, and ?region= narrows further. */
-export async function buildReport(repository: AeraRepository, callerScope: DataScope, userId: string, report: ExportReport, params: URLSearchParams): Promise<{ title: string; tables: ExportTable[] }> {
+export async function buildReport(repository: KindlyPayRepository, callerScope: DataScope, userId: string, report: ExportReport, params: URLSearchParams): Promise<{ title: string; tables: ExportTable[] }> {
   const scope = withRegion(callerScope, params.get("region"));
   if (report === "cases") {
     const view = params.get("view") ?? undefined;
@@ -172,5 +172,5 @@ export async function toXlsx(tables: ExportTable[]): Promise<Buffer> {
 }
 
 export function exportFileName(title: string, asOf: string, format: ExportFormat) {
-  return `aera-${title}${title.includes(asOf) ? "" : `-${asOf}`}.${format}`;
+  return `kindlypay-${title}${title.includes(asOf) ? "" : `-${asOf}`}.${format}`;
 }

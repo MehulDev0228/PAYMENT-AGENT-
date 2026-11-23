@@ -13,7 +13,7 @@ describe("invoice ledger rows", () => {
 
   it("rejects a bad row on its own and keeps its invoice number", () => {
     const { rows, invalidRows } = parseInvoiceRows([{ ...base, "Customer Email": "not-an-email" }, { ...base, "Invoice Number": "INV-2", "Customer Phone": 9_100_000_001 }]);
-    expect(invalidRows).toEqual([{ row: 2, invoiceNumber: "INV-1", message: expect.stringContaining("customer_email") }]);
+    expect(invalidRows).toEqual([{ row: 2, invoiceNumber: "INV-1", message: expect.stringContaining("email") }]);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ invoice_number: "INV-2", customer_phone: "9100000001", row: 3 });
   });

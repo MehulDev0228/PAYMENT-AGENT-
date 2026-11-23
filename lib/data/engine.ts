@@ -20,7 +20,9 @@ const MAX_NOTE_LENGTH = 2000;
 
 type Actor = { type: AuditEvent["actorType"]; id?: string };
 type CustomerContactField = "name" | "email" | "phone" | "region" | "accountManager";
-const AERA: Actor = { type: "aera" };
+/** An uploaded row once the optional columns have their defaults. */
+type SyncRow = InvoiceImportRow & { invoice_date: string; currency: string; customer_name: string };
+const KINDLYPAY: Actor = { type: "kindlypay" };
 const SYSTEM: Actor = { type: "system" };
 
 /**
@@ -398,7 +400,7 @@ export class CollectionsEngine {
 
   /**
    * Daily ledger sync. New invoice numbers are created; known ones take the file's amount, due date and
-   * customer contact details. AERA's own payment record is never overwritten: an ERP balance that differs,
+   * customer contact details. KindlyPay's own payment record is never overwritten: an ERP balance that differs,
    * an amount below what is already paid, or (in full-ledger mode) an open invoice the file no longer lists
    * is flagged for reconciliation instead. Every change is audited with before and after values.
    * `options.regions` limits the sync to customers in those regions: other rows are rejected, and full-ledger
@@ -418,11 +420,18 @@ export class CollectionsEngine {
       if (invalid.invoiceNumber) inFile.add(invalid.invoiceNumber);
       record({ row: invalid.row, invoiceNumber: invalid.invoiceNumber ?? "", outcome: "rejected", changes: [], message: invalid.message });
     }
-    rows.forEach((row, index) => {
-      const rowNumber = row.row ?? index + 2;
-      const reject = (message: string) => record({ row: rowNumber, invoiceNumber: row.invoice_number ?? "", outcome: "rejected", changes: [], message });
-      if (row.invoice_number) inFile.add(row.invoice_number);
-      if (!row.invoice_number || !row.customer_name || !row.customer_email || !row.invoice_date || !row.due_date || !row.amount || !row.currency) return reject("Missing required invoice field");
+    rows.forEach((input, index) => {
+      const rowNumber = input.row ?? index + 2;
+      if (input.invoice_number) inFile.add(input.invoice_number);
+      const reject = (message: string) => record({ row: rowNumber, invoiceNumber: input.invoice_number ?? "", outcome: "rejected", changes: [], message });
+      if (!input.invoice_number || !input.customer_email || !input.due_date || !input.amount) return reject("Needs a bill number, customer email, amount due and due date");
+      // Only the four columns above are required; the rest fall back to sensible defaults.
+      const row: SyncRow = {
+        ...input,
+        invoice_date: input.invoice_date || input.due_date,
+        currency: input.currency || this.data.companies.find((item) => item.id === companyId)?.currency || "INR",
+        customer_name: input.customer_name || nameFromEmail(input.customer_email),
+      };
       if (row.due_date < row.invoice_date) return reject(`Due date precedes invoice date for ${row.invoice_number}`);
       if (seen.has(row.invoice_number)) return reject(`${row.invoice_number} appears more than once in this file`);
       seen.add(row.invoice_number);
@@ -458,7 +467,7 @@ export class CollectionsEngine {
           invoice.updatedAt = new Date().toISOString();
           this.audit(companyId, actor, "invoice_missing_from_ledger", "invoice", invoice.id, invoice.reconciliationNote, { importId, invoiceNumber: invoice.invoiceNumber, amountOutstanding: invoice.amountOutstanding, changes });
         }
-        record({ invoiceNumber: invoice.invoiceNumber, outcome: "flagged", changes, reconciliation: "missing_from_ledger", message: "Open in AERA but missing from the ledger: likely paid or cancelled in the ERP" });
+        record({ invoiceNumber: invoice.invoiceNumber, outcome: "flagged", changes, reconciliation: "missing_from_ledger", message: "Open in KindlyPay but missing from the ledger: likely paid or cancelled in the ERP" });
       }
     }
 
@@ -529,7 +538,7 @@ export class CollectionsEngine {
       if (!collectionCase) {
         collectionCase = { id: randomUUID(), companyId, invoiceId: invoice.id, customerId: invoice.customerId, status: "overdue", priority: priorityFor(overdue, invoice.amountOutstanding), daysOverdue: overdue, nextAction: "Evaluate collection policy", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
         this.data.cases.push(collectionCase);
-        this.audit(companyId, AERA, "case_opened", "collection_case", collectionCase.id, `${invoice.invoiceNumber} is ${overdue} days overdue`, { invoiceNumber: invoice.invoiceNumber, amountOutstanding: invoice.amountOutstanding });
+        this.audit(companyId, KINDLYPAY, "case_opened", "collection_case", collectionCase.id, `${invoice.invoiceNumber} is ${overdue} days overdue`, { invoiceNumber: invoice.invoiceNumber, amountOutstanding: invoice.amountOutstanding });
       }
       collectionCase.daysOverdue = overdue;
       collectionCase.priority = priorityFor(overdue, invoice.amountOutstanding);
@@ -544,12 +553,12 @@ export class CollectionsEngine {
         message: step.action === "reminder" ? `Send a ${step.tone} reminder for ${invoice.invoiceNumber}.` : `Review ${invoice.invoiceNumber}: ${overdue} days overdue, ${formatMoney(invoice.amountOutstanding, invoice.currency)} outstanding.`,
         reason: `Policy step "${step.id}" reached at ${overdue} days overdue`,
         dataSnapshot: { policyStepId: step.id, daysOverdue: overdue, amountOutstanding: invoice.amountOutstanding, tone: step.tone },
-        scheduledAt: this.today(), status: step.requiresHumanApproval ? "awaiting_approval" : "pending", createdBy: "aera", createdAt: new Date().toISOString(),
+        scheduledAt: this.today(), status: step.requiresHumanApproval ? "awaiting_approval" : "pending", createdBy: "kindlypay", createdAt: new Date().toISOString(),
       };
       this.data.actions.push(action); created.push(action);
-      this.advance(companyId, collectionCase, [step.action === "reminder" ? "reminder_pending" : "escalated"], AERA, action.reason);
+      this.advance(companyId, collectionCase, [step.action === "reminder" ? "reminder_pending" : "escalated"], KINDLYPAY, action.reason);
       collectionCase.nextAction = step.requiresHumanApproval ? "Human approval required" : "Generate and send reminder";
-      this.audit(companyId, AERA, "action_created", "collection_action", action.id, action.reason, action.dataSnapshot);
+      this.audit(companyId, KINDLYPAY, "action_created", "collection_action", action.id, action.reason, action.dataSnapshot);
     }
     this.audit(companyId, SYSTEM, "daily_monitor_run", "automation", "daily-monitor", `Reviewed ${candidates.length} overdue invoices; created ${created.length} actions`, { reviewed: candidates.length, created: created.length });
     return { reviewed: candidates.length, created: created.length, actions: created };
@@ -598,11 +607,11 @@ export class CollectionsEngine {
     const result: ReplyResult = { intent: classification.intent, caseId: collectionCase?.id, requiresHuman: outcome.requestApproval, confidence: classification.confidence, duplicate: false, outcome: outcome.nextAction };
     if (!collectionCase || !invoice) {
       result.outcome = "No open case matched this reply; left for manual triage";
-      this.audit(companyId, AERA, "reply_unmatched", "communication", messageId, result.outcome, { from: input.from, intent: classification.intent });
+      this.audit(companyId, KINDLYPAY, "reply_unmatched", "communication", messageId, result.outcome, { from: input.from, intent: classification.intent });
       return result;
     }
 
-    this.advance(companyId, collectionCase, outcome.caseStatus === "customer_replied" ? ["customer_replied"] : ["customer_replied", outcome.caseStatus], AERA, outcome.reason);
+    this.advance(companyId, collectionCase, outcome.caseStatus === "customer_replied" ? ["customer_replied"] : ["customer_replied", outcome.caseStatus], KINDLYPAY, outcome.reason);
     collectionCase.nextAction = outcome.nextAction;
     if (outcome.recordPromise && classification.promised_date) {
       for (const active of this.data.promises.filter((item) => item.invoiceId === invoice.id && item.status === "active")) { active.status = "cancelled"; active.updatedAt = at; }
@@ -610,12 +619,12 @@ export class CollectionsEngine {
       this.data.promises.push(promise);
       collectionCase.nextActionAt = promise.promisedDate;
       result.promiseId = promise.id;
-      this.audit(companyId, AERA, "promise_recorded", "collection_case", collectionCase.id, outcome.reason, { promiseId: promise.id, promisedDate: promise.promisedDate, promisedAmount: promise.promisedAmount, confidence: classification.confidence });
+      this.audit(companyId, KINDLYPAY, "promise_recorded", "collection_case", collectionCase.id, outcome.reason, { promiseId: promise.id, promisedDate: promise.promisedDate, promisedAmount: promise.promisedAmount, confidence: classification.confidence });
     }
     if (outcome.requestApproval) {
       result.approvalActionId = this.requestApproval(companyId, collectionCase, invoice, outcome.reason, { intent: classification.intent, sourceMessageId: messageId, confidence: classification.confidence }).id;
     }
-    this.audit(companyId, AERA, "reply_processed", "collection_case", collectionCase.id, outcome.reason, { intent: classification.intent, confidence: classification.confidence, messageId });
+    this.audit(companyId, KINDLYPAY, "reply_processed", "collection_case", collectionCase.id, outcome.reason, { intent: classification.intent, confidence: classification.confidence, messageId });
     return result;
   }
 
@@ -627,7 +636,7 @@ export class CollectionsEngine {
 
   // ---------------------------------------------------- ledger sync helpers
 
-  private createInvoice(companyId: string, row: InvoiceImportRow, amount: number, outstanding: number | undefined, actor: Actor, importId: string): Omit<InvoiceSyncRow, "row"> | string {
+  private createInvoice(companyId: string, row: SyncRow, amount: number, outstanding: number | undefined, actor: Actor, importId: string): Omit<InvoiceSyncRow, "row"> | string {
     let customer = this.findImportCustomer(companyId, row);
     let changes: FieldChange[] = [];
     if (customer) {
@@ -641,7 +650,7 @@ export class CollectionsEngine {
       } satisfies Customer;
       this.data.customers.push(customer);
     }
-    // A first sync takes the ERP balance as the opening position: whatever is already settled there was paid before AERA.
+    // A first sync takes the ERP balance as the opening position: whatever is already settled there was paid before KindlyPay.
     const amountOutstanding = outstanding ?? amount;
     const at = new Date().toISOString();
     const invoice: Invoice = {
@@ -657,9 +666,9 @@ export class CollectionsEngine {
     return { invoiceNumber: invoice.invoiceNumber, outcome: "new", changes, ...(message ? { message } : {}) };
   }
 
-  private syncInvoice(companyId: string, invoice: Invoice, row: InvoiceImportRow, amount: number, outstanding: number | undefined, actor: Actor, importId: string): Omit<InvoiceSyncRow, "row"> | string {
-    if (invoice.status === "cancelled") return `${invoice.invoiceNumber} is cancelled in AERA`;
-    if (row.currency !== invoice.currency) return `${invoice.invoiceNumber} is in ${invoice.currency} in AERA, not ${row.currency}`;
+  private syncInvoice(companyId: string, invoice: Invoice, row: SyncRow, amount: number, outstanding: number | undefined, actor: Actor, importId: string): Omit<InvoiceSyncRow, "row"> | string {
+    if (invoice.status === "cancelled") return `${invoice.invoiceNumber} is cancelled in KindlyPay`;
+    if (row.currency !== invoice.currency) return `${invoice.invoiceNumber} is in ${invoice.currency} in KindlyPay, not ${row.currency}`;
     const customer = this.data.customers.find((item) => item.id === invoice.customerId)!;
     if (row.customer_code && row.customer_code !== customer.customerCode) return `${invoice.invoiceNumber} belongs to customer ${customer.customerCode}, not ${row.customer_code}`;
     const customerChanges = this.customerUpdate(companyId, customer, row);
@@ -680,11 +689,11 @@ export class CollectionsEngine {
 
     set("dueDate", row.due_date);
     if (amount !== invoice.amount) {
-      // Payments AERA matched stay applied: an amount below them is a question for a person, not an overwrite.
+      // Payments KindlyPay matched stay applied: an amount below them is a question for a person, not an overwrite.
       const paid = Math.max(invoice.amountPaid, this.matchedPaid(invoice));
       if (amount < paid) {
         flag = "amount_below_paid";
-        note = `ERP amount ${money(amount)} is below the ${money(paid)} AERA has recorded as paid; the amount stays at ${money(invoice.amount)}`;
+        note = `ERP amount ${money(amount)} is below the ${money(paid)} KindlyPay has recorded as paid; the amount stays at ${money(invoice.amount)}`;
       } else {
         set("amount", amount); set("amountPaid", paid); set("amountOutstanding", round2(amount - paid));
       }
@@ -695,7 +704,7 @@ export class CollectionsEngine {
       const difference = round2(outstanding - invoice.amountOutstanding);
       if (difference !== 0) {
         flag = "balance_mismatch";
-        note = `ERP balance ${money(outstanding)} vs ${money(invoice.amountOutstanding)} in AERA (ERP ${difference > 0 ? "higher" : "lower"} by ${money(Math.abs(difference))})`;
+        note = `ERP balance ${money(outstanding)} vs ${money(invoice.amountOutstanding)} in KindlyPay (ERP ${difference > 0 ? "higher" : "lower"} by ${money(Math.abs(difference))})`;
       }
     } else if (!flag && invoice.reconciliationStatus === "balance_mismatch") {
       // This file carries no balance column, so an earlier mismatch is still unresolved.
@@ -720,14 +729,14 @@ export class CollectionsEngine {
   }
 
   /** The customer an imported row belongs to: by customer code first, then by email. */
-  private findImportCustomer(companyId: string, row: InvoiceImportRow) {
+  private findImportCustomer(companyId: string, row: SyncRow) {
     const customers = this.data.customers.filter((item) => item.companyId === companyId);
     return (row.customer_code ? customers.find((item) => item.customerCode === row.customer_code) : undefined)
       ?? customers.find((item) => item.email.toLowerCase() === row.customer_email.toLowerCase());
   }
 
   /** Contact fields the row would change on the customer (blank cells keep the current value), or why it cannot. */
-  private customerUpdate(companyId: string, customer: Customer, row: InvoiceImportRow): FieldChange[] | string {
+  private customerUpdate(companyId: string, customer: Customer, row: SyncRow): FieldChange[] | string {
     const email = row.customer_email.trim();
     const sameEmail = email.toLowerCase() === customer.email.toLowerCase();
     if (!sameEmail) {
@@ -784,7 +793,7 @@ export class CollectionsEngine {
       promise.status = "fulfilled"; promise.updatedAt = invoice.updatedAt;
       this.audit(companyId, actor, "promise_fulfilled", "payment_promise", promise.id, reason, snapshot);
     }
-    // Being settled in AERA explains why the ERP's open ledger no longer lists it.
+    // Being settled in KindlyPay explains why the ERP's open ledger no longer lists it.
     if (invoice.reconciliationStatus === "missing_from_ledger") {
       delete invoice.reconciliationStatus; delete invoice.reconciliationNote;
       this.audit(companyId, actor, "invoice_reconciled", "invoice", invoice.id, `${invoice.invoiceNumber} is settled, which explains its absence from the ledger`,
@@ -823,10 +832,10 @@ export class CollectionsEngine {
     const action: CollectionAction = {
       id: randomUUID(), companyId, collectionCaseId: collectionCase.id, invoiceId: invoice.id, customerId: invoice.customerId, actionType: "escalation", channel: "internal",
       message: `Decide next step for ${invoice.invoiceNumber} (${formatMoney(invoice.amountOutstanding, invoice.currency)} outstanding).`, reason,
-      dataSnapshot: { ...snapshot, amountOutstanding: invoice.amountOutstanding, daysOverdue: collectionCase.daysOverdue }, status: "awaiting_approval", createdBy: "aera", createdAt: new Date().toISOString(),
+      dataSnapshot: { ...snapshot, amountOutstanding: invoice.amountOutstanding, daysOverdue: collectionCase.daysOverdue }, status: "awaiting_approval", createdBy: "kindlypay", createdAt: new Date().toISOString(),
     };
     this.data.actions.push(action);
-    this.audit(companyId, AERA, "approval_requested", "collection_action", action.id, reason, { collectionCaseId: collectionCase.id, ...snapshot });
+    this.audit(companyId, KINDLYPAY, "approval_requested", "collection_action", action.id, reason, { collectionCaseId: collectionCase.id, ...snapshot });
     return action;
   }
 
@@ -851,6 +860,12 @@ export class CollectionsEngine {
   private invoicesOf(companyId: string) { return this.data.invoices.filter((item) => item.companyId === companyId); }
   private caseById(id: string) { return this.data.cases.find((item) => item.id === id); }
   private indexById<T extends { id: string }>(items: T[]) { return new Map(items.map((item) => [item.id, item])); }
+}
+
+/** "accounts@bluebird-foods.co.in" → "Bluebird Foods", for bills uploaded without a customer name. */
+function nameFromEmail(email: string): string {
+  const label = email.split("@")[1]?.split(".")[0] ?? email;
+  return label.split(/[-_]+/).filter(Boolean).map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ") || email;
 }
 
 function sum(values: number[]) { return values.reduce((total, value) => total + value, 0); }

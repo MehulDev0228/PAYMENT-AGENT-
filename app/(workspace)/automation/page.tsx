@@ -6,7 +6,7 @@ import { canManage, getPageContext } from "@/lib/auth";
 import { repository } from "@/lib/data";
 import { formatMoney } from "@/lib/domain/money";
 
-export const metadata: Metadata = { title: "Automation" };
+export const metadata: Metadata = { title: "Auto reminders" };
 export const dynamic = "force-dynamic";
 
 const WORKFLOWS = [
@@ -25,15 +25,15 @@ export default async function AutomationPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Operations" title="The jobs behind the scenes." muted="Run them by hand, watch what they record." />
+      <PageHeader eyebrow="Auto reminders" title="What runs on its own." muted="Runs daily by itself. Run it by hand to see exactly what it does." />
       <AutomationConsole replyCases={replyCases} readOnly={!canManage(context)} />
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <article className="panel overflow-hidden">
-          <SectionTitle title="Automation log" helper="Latest audit events from jobs and AERA" />
+          <SectionTitle title="What it did" helper="Every step, with its reason" />
           <ActivityFeed events={await repository.listAudit(context, { limit: 10 })} empty="No jobs have run yet" />
         </article>
         <article className="panel overflow-hidden">
-          <SectionTitle title="Integrations" helper="What is connected in this environment" />
+          <SectionTitle title="Connections" helper="What is set up right now" />
           <ul className="divide-y divide-line/70 text-[13px]">
             <li className="flex items-center justify-between gap-4 px-5 py-3.5"><span className="font-medium">Data adapter</span><span className="font-mono text-[11.5px] text-muted">mock · fictional demo dataset</span></li>
             <li className="flex items-center justify-between gap-4 px-5 py-3.5"><span className="font-medium">Language model</span><span className={`font-mono text-[11.5px] ${llm ? "text-success" : "text-muted"}`}>{llm ? `OpenAI · ${process.env.OPENAI_MODEL}` : "Local deterministic fallback"}</span></li>

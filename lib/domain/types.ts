@@ -60,9 +60,9 @@ export interface Invoice {
   amountOutstanding: number;
   status: InvoiceStatus;
   source: string;
-  /** While reconciliationStatus is balance_mismatch: the balance the ERP reported, which AERA did not copy over its own. */
+  /** While reconciliationStatus is balance_mismatch: the balance the ERP reported, which KindlyPay did not copy over its own. */
   erpOutstanding?: number;
-  /** Set when a ledger sync found something a person must reconcile; AERA's own balance is left as is. */
+  /** Set when a ledger sync found something a person must reconcile; KindlyPay's own balance is left as is. */
   reconciliationStatus?: ReconciliationStatus;
   reconciliationNote?: string;
   createdAt: string;
@@ -70,9 +70,9 @@ export interface Invoice {
 }
 
 /**
- * balance_mismatch: the ERP balance differs from AERA's.
+ * balance_mismatch: the ERP balance differs from KindlyPay's.
  * missing_from_ledger: a full-ledger sync no longer lists this open invoice (likely paid or cancelled in the ERP).
- * amount_below_paid: the ERP amount is lower than what AERA has already recorded as paid.
+ * amount_below_paid: the ERP amount is lower than what KindlyPay has already recorded as paid.
  */
 export type ReconciliationStatus = "balance_mismatch" | "missing_from_ledger" | "amount_below_paid";
 
@@ -119,7 +119,7 @@ export interface CollectionAction {
   scheduledAt?: string;
   executedAt?: string;
   status: ActionStatus;
-  createdBy: "aera" | "human" | "system";
+  createdBy: "kindlypay" | "human" | "system";
   approvedBy?: string;
   createdAt: string;
 }
@@ -224,7 +224,7 @@ export interface CaseDetail extends CaseListItem {
 export interface AuditEvent {
   id: string;
   companyId: string;
-  actorType: "aera" | "human" | "system";
+  actorType: "kindlypay" | "human" | "system";
   actorId?: string;
   eventType: string;
   entityType: "invoice" | "customer" | "payment" | "collection_case" | "collection_action" | "payment_promise" | "communication" | "import" | "automation";

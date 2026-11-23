@@ -4,13 +4,13 @@ import { parseRegions } from "@/lib/domain/regions";
 import type { UserRole } from "@/lib/domain/types";
 
 /**
- * How AERA identifies the caller.
+ * How KindlyPay identifies the caller.
  *  - supabase: a Supabase Auth session; company and role come from the caller's public.users row.
  *  - dev:      no authentication. Every request acts as a demo manager. Local development only.
  */
 export type AuthMode = "supabase" | "dev";
 
-/** "automation" is the n8n service caller, authenticated by AERA_INTERNAL_API_TOKEN. */
+/** "automation" is the n8n service caller, authenticated by KINDLYPAY_INTERNAL_API_TOKEN. */
 export type ContextRole = UserRole | "automation";
 
 export interface RequestContext {
@@ -19,6 +19,7 @@ export interface RequestContext {
   role: ContextRole;
   name: string;
   email?: string;
+  companyName: string;
   mode: AuthMode;
   /**
    * The regions this caller may see and act on; null is every region. A RequestContext is the
@@ -28,8 +29,8 @@ export interface RequestContext {
 }
 
 export type AuthEnv = Partial<Record<
-  | "AERA_AUTH_MODE" | "AERA_DATA_ADAPTER" | "NODE_ENV" | "NEXT_PUBLIC_SUPABASE_URL" | "NEXT_PUBLIC_SUPABASE_ANON_KEY"
-  | "AERA_DEV_COMPANY_ID" | "AERA_DEV_ROLE" | "AERA_DEV_REGIONS" | "AERA_INTERNAL_API_TOKEN" | "AERA_AUTOMATION_COMPANY_ID",
+  | "KINDLYPAY_AUTH_MODE" | "KINDLYPAY_DATA_ADAPTER" | "NODE_ENV" | "NEXT_PUBLIC_SUPABASE_URL" | "NEXT_PUBLIC_SUPABASE_ANON_KEY"
+  | "KINDLYPAY_DEV_COMPANY_ID" | "KINDLYPAY_DEV_ROLE" | "KINDLYPAY_DEV_REGIONS" | "KINDLYPAY_INTERNAL_API_TOKEN" | "KINDLYPAY_AUTOMATION_COMPANY_ID",
   string
 >>;
 
@@ -45,7 +46,7 @@ const USER_ROLES = new Set<UserRole>(["admin", "finance_manager", "collection_ma
 const MANAGER_ROLES = new Set<ContextRole>(["admin", "finance_manager", "collection_manager", "automation"]);
 
 export const ROLE_LABELS: Record<ContextRole, string> = {
-  admin: "Admin", finance_manager: "Finance manager", collection_manager: "Collection manager", viewer: "Viewer (read-only)", automation: "Automation",
+  admin: "Owner", finance_manager: "Finance manager", collection_manager: "Collections", viewer: "Viewer (read-only)", automation: "Automation",
 };
 
 export function isUserRole(value: unknown): value is UserRole {
@@ -57,29 +58,29 @@ export function isUserRole(value: unknown): value is UserRole {
  * runs in dev mode on the mock adapter. Setting NEXT_PUBLIC_SUPABASE_URL switches to Supabase Auth.
  */
 export function resolveAuthMode(env: AuthEnv): AuthMode {
-  const requested = env.AERA_AUTH_MODE || (env.NEXT_PUBLIC_SUPABASE_URL ? "supabase" : "dev");
-  const adapter = env.AERA_DATA_ADAPTER || "mock";
+  const requested = env.KINDLYPAY_AUTH_MODE || (env.NEXT_PUBLIC_SUPABASE_URL ? "supabase" : "dev");
+  const adapter = env.KINDLYPAY_DATA_ADAPTER || "mock";
   if (requested === "dev") {
     // Without authentication anyone can read and change the data. Allowed for the fictional in-memory
     // dataset, or for a real database only on a developer machine.
     if (adapter !== "mock" && env.NODE_ENV === "production") {
-      throw new Error("AERA_AUTH_MODE=dev turns authentication off and cannot be used with a database in production. Configure Supabase Auth (see README).");
+      throw new Error("KINDLYPAY_AUTH_MODE=dev turns authentication off and cannot be used with a database in production. Configure Supabase Auth (see README).");
     }
     return "dev";
   }
   if (requested === "supabase") {
     if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.NEXT_PUBLIC_SUPABASE_ANON_KEY) throw new Error("Supabase Auth needs NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY");
-    if (adapter === "mock") throw new Error("Supabase Auth needs AERA_DATA_ADAPTER=postgres: workspace users live in public.users");
+    if (adapter === "mock") throw new Error("Supabase Auth needs KINDLYPAY_DATA_ADAPTER=postgres: workspace users live in public.users");
     return "supabase";
   }
-  throw new Error(`Unknown AERA_AUTH_MODE "${requested}" (expected supabase or dev)`);
+  throw new Error(`Unknown KINDLYPAY_AUTH_MODE "${requested}" (expected supabase or dev)`);
 }
 
 /** A verified Supabase Auth user (from the session JWT, never from request headers). */
 export interface SessionUser { id: string; email?: string }
 
 /** The caller's row in public.users. */
-export interface UserProfile { id: string; companyId: string; role: UserRole; name: string; email: string; regions: string[] | null }
+export interface UserProfile { id: string; companyId: string; companyName: string; role: UserRole; name: string; email: string; regions: string[] | null }
 
 export interface ContextSource {
   /** The Authorization header, only consulted on routes that accept the automation token. */
@@ -93,10 +94,12 @@ export interface ContextSource {
 }
 
 export function devContext(env: AuthEnv): RequestContext {
-  const role = env.AERA_DEV_ROLE || "finance_manager";
-  if (!isUserRole(role)) throw new Error(`Unknown AERA_DEV_ROLE "${role}"`);
-  const regions = env.AERA_DEV_REGIONS ? parseRegions(env.AERA_DEV_REGIONS) : null;
-  return { companyId: env.AERA_DEV_COMPANY_ID || DEMO_COMPANY_ID, userId: "user-demo-manager", role, name: "Mehul Patel", email: "mehul@aera.example", mode: "dev", regions };
+  const role = env.KINDLYPAY_DEV_ROLE || "finance_manager";
+  if (!isUserRole(role)) throw new Error(`Unknown KINDLYPAY_DEV_ROLE "${role}"`);
+  const regions = env.KINDLYPAY_DEV_REGIONS ? parseRegions(env.KINDLYPAY_DEV_REGIONS) : null;
+  const companyId = env.KINDLYPAY_DEV_COMPANY_ID || DEMO_COMPANY_ID;
+  const companyName = companyId === DEMO_COMPANY_ID ? "KindlyPay Demo Company" : "Local company";
+  return { companyId, companyName, userId: "user-demo-manager", role, name: "Mehul Patel", email: "mehul@kindlypay.example", mode: "dev", regions };
 }
 
 function sameSecret(actual: string, expected: string): boolean {
@@ -105,15 +108,15 @@ function sameSecret(actual: string, expected: string): boolean {
 }
 
 function automationContext(source: ContextSource, env: AuthEnv, mode: AuthMode): RequestContext {
-  const expected = env.AERA_INTERNAL_API_TOKEN;
+  const expected = env.KINDLYPAY_INTERNAL_API_TOKEN;
   const token = source.authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
-  if (!expected) throw new AuthError(401, "Automation token is not configured (AERA_INTERNAL_API_TOKEN)");
+  if (!expected) throw new AuthError(401, "Automation token is not configured (KINDLYPAY_INTERNAL_API_TOKEN)");
   if (!token || !sameSecret(token, expected)) throw new AuthError(401, "Unauthorized automation request");
   // The token is bound to one company by configuration, so a caller cannot pick a tenant with a header.
-  const companyId = env.AERA_AUTOMATION_COMPANY_ID || (mode === "dev" ? devContext(env).companyId : undefined);
-  if (!companyId) throw new Error("AERA_AUTOMATION_COMPANY_ID must be set to the company n8n works for");
+  const companyId = env.KINDLYPAY_AUTOMATION_COMPANY_ID || (mode === "dev" ? devContext(env).companyId : undefined);
+  if (!companyId) throw new Error("KINDLYPAY_AUTOMATION_COMPANY_ID must be set to the company n8n works for");
   if (source.companyHeader && source.companyHeader !== companyId) throw new AuthError(403, "x-company-id does not match the company this automation token is issued for");
-  return { companyId, userId: "automation:n8n", role: "automation", name: "n8n automation", mode, regions: null };
+  return { companyId, companyName: "", userId: "automation:n8n", role: "automation", name: "n8n automation", mode, regions: null };
 }
 
 /**
@@ -123,7 +126,7 @@ function automationContext(source: ContextSource, env: AuthEnv, mode: AuthMode):
 export async function resolveRequestContext(source: ContextSource, env: AuthEnv): Promise<RequestContext> {
   const mode = resolveAuthMode(env);
   const bearer = /^Bearer\s/i.test(source.authorization ?? "");
-  if (source.acceptsAutomation && (bearer || (mode === "dev" && env.AERA_INTERNAL_API_TOKEN))) {
+  if (source.acceptsAutomation && (bearer || (mode === "dev" && env.KINDLYPAY_INTERNAL_API_TOKEN))) {
     return automationContext(source, env, mode);
   }
   if (mode === "dev") return devContext(env);
@@ -131,9 +134,9 @@ export async function resolveRequestContext(source: ContextSource, env: AuthEnv)
   const user = await source.sessionUser();
   if (!user) throw new AuthError(401, "Sign in to continue");
   const profile = await source.findProfile(user.id);
-  if (!profile) throw new AuthError(403, "This account has no access to an AERA workspace. Ask an admin to add you.");
+  if (!profile) throw new AuthError(403, "This account has no access to a KindlyPay workspace. Ask an admin to add you.");
   if (!isUserRole(profile.role)) throw new AuthError(403, "Unknown workspace role");
-  return { companyId: profile.companyId, userId: profile.id, role: profile.role, name: profile.name, email: profile.email, mode, regions: profile.regions };
+  return { companyId: profile.companyId, companyName: profile.companyName, userId: profile.id, role: profile.role, name: profile.name, email: profile.email, mode, regions: profile.regions };
 }
 
 export function canManage(context: Pick<RequestContext, "role">): boolean {

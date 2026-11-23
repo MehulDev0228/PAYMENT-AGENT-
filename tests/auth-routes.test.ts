@@ -13,13 +13,13 @@ const TOKEN = "automation-secret-token";
 
 const state = vi.hoisted(() => {
   Object.assign(process.env, {
-    NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co", NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key", AERA_DATA_ADAPTER: "postgres",
-    AERA_INTERNAL_API_TOKEN: "automation-secret-token", AERA_AUTOMATION_COMPANY_ID: "11111111-1111-4111-8111-111111111111",
+    NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co", NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key", KINDLYPAY_DATA_ADAPTER: "postgres",
+    KINDLYPAY_INTERNAL_API_TOKEN: "automation-secret-token", KINDLYPAY_AUTOMATION_COMPANY_ID: "11111111-1111-4111-8111-111111111111",
   });
   return { session: null as SessionUser | null, profiles: new Map<string, UserProfile>() };
 });
 afterAll(() => {
-  for (const key of ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "AERA_DATA_ADAPTER", "AERA_INTERNAL_API_TOKEN", "AERA_AUTOMATION_COMPANY_ID"]) delete process.env[key];
+  for (const key of ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "KINDLYPAY_DATA_ADAPTER", "KINDLYPAY_INTERNAL_API_TOKEN", "KINDLYPAY_AUTOMATION_COMPANY_ID"]) delete process.env[key];
 });
 
 const repo = vi.hoisted(() => ({
@@ -51,9 +51,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.session = null;
   state.profiles = new Map([
-    [VIEWER, { id: VIEWER, companyId: ACME, role: "viewer", name: "Vik Viewer", email: "vik@acme.example", regions: null }],
-    [MANAGER, { id: MANAGER, companyId: ACME, role: "finance_manager", name: "Asha Rao", email: "asha@acme.example", regions: null }],
-    [NORTH_MANAGER, { id: NORTH_MANAGER, companyId: ACME, role: "collection_manager", name: "Nita North", email: "nita@acme.example", regions: ["North"] }],
+    [VIEWER, { id: VIEWER, companyId: ACME, companyName: "Acme", role: "viewer", name: "Vik Viewer", email: "vik@acme.example", regions: null }],
+    [MANAGER, { id: MANAGER, companyId: ACME, companyName: "Acme", role: "finance_manager", name: "Asha Rao", email: "asha@acme.example", regions: null }],
+    [NORTH_MANAGER, { id: NORTH_MANAGER, companyId: ACME, companyName: "Acme", role: "collection_manager", name: "Nita North", email: "nita@acme.example", regions: ["North"] }],
   ]);
 });
 
@@ -125,7 +125,7 @@ describe("collector workflow routes", () => {
     const response = await exportRoute.GET(new Request("http://localhost/api/export/cases?assignee=me", { headers: SPOOF }), { params: Promise.resolve({ report: "cases" }) });
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("spreadsheetml");
-    expect(response.headers.get("content-disposition")).toBe('attachment; filename="aera-cases-2026-09-27.xlsx"');
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="kindlypay-cases-2026-09-27.xlsx"');
     expect(repo.listCases).toHaveBeenCalledWith({ companyId: ACME, regions: null }, expect.objectContaining({ assignedTo: VIEWER }));
   });
 
@@ -185,7 +185,7 @@ describe("proxy", () => {
   it("sends signed-out page requests to the login page", async () => {
     const response = await proxy(new NextRequest("http://localhost/cases?view=attention"));
     expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe("http://localhost/login?next=%2Fcases%3Fview%3Dattention");
+    expect(response.headers.get("location")).toBe("http://localhost/sign-in?next=%2Fcases%3Fview%3Dattention");
   });
 
   it("answers 401 for signed-out API calls and lets bearer calls through to the route", async () => {
@@ -195,6 +195,6 @@ describe("proxy", () => {
 
   it("leaves the public pages open", async () => {
     expect((await proxy(new NextRequest("http://localhost/"))).status).toBe(200);
-    expect((await proxy(new NextRequest("http://localhost/login"))).status).toBe(200);
+    expect((await proxy(new NextRequest("http://localhost/sign-in"))).status).toBe(200);
   });
 });

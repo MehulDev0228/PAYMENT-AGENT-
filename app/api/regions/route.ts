@@ -24,7 +24,7 @@ export async function GET(request: Request) {
     const rows = await repository.regionSummary(context);
     if (new URL(request.url).searchParams.get("format") !== "csv") return NextResponse.json(rows);
     const today = await repository.today(context);
-    return new NextResponse(toCsv(rows), { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="aera-regions-${today}.csv"` } });
+    return new NextResponse(toCsv(rows), { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="kindlypay-regions-${today}.csv"` } });
   } catch (error) {
     return apiError(error, "Lookup failed", 500);
   }

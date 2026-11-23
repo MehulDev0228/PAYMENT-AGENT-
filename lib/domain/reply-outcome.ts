@@ -29,7 +29,7 @@ export interface ReplyOutcome {
   reason: string;
 }
 
-// Intents that touch terms, amounts or disputes. AERA never decides these.
+// Intents that touch terms, amounts or disputes. KindlyPay never decides these.
 const HUMAN_INTENTS = new Set<ReplyIntent>(["payment_dispute", "request_for_extension", "payment_plan_request"]);
 const MIN_AUTOMATIC_CONFIDENCE = 0.8;
 
@@ -51,7 +51,7 @@ export function replyOutcome(classification: ReplyClassificationInput, today: st
     return { caseStatus: "payment_promised", nextAction: `Verify promised payment on ${classification.promised_date}`, recordPromise: true, requestApproval: false, reason: `Customer promised payment on ${classification.promised_date}` };
   }
   if (intent === "payment_completed" || intent === "payment_initiated") {
-    return { caseStatus: "customer_replied", nextAction: "Confirm payment against the next bank import", recordPromise: false, requestApproval: false, reason: "Customer reports payment; AERA does not close cases until a payment is matched" };
+    return { caseStatus: "customer_replied", nextAction: "Confirm payment against the next bank import", recordPromise: false, requestApproval: false, reason: "Customer reports payment; KindlyPay does not close cases until a payment is matched" };
   }
   return { caseStatus: "customer_replied", nextAction: "Review customer reply", recordPromise: false, requestApproval: false, reason: `Customer reply classified as ${intent}` };
 }

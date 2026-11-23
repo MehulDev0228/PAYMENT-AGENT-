@@ -22,19 +22,19 @@ async function findProfile(userId: string): Promise<UserProfile | null> {
 /** The caller of a server component or server action. Throws AuthError when signed out or not provisioned. */
 export const getRequestContext = cache(async (): Promise<RequestContext> => resolveRequestContext({ sessionUser: verifiedSessionUser, findProfile }, env()));
 
-/** For workspace pages: like getRequestContext, but sends signed-out or unprovisioned users to /login. */
+/** For workspace pages: like getRequestContext, but sends signed-out or unprovisioned users to /sign-in. */
 export async function getPageContext(): Promise<RequestContext> {
   try {
     return await getRequestContext();
   } catch (error) {
-    if (error instanceof AuthError) redirect(error.status === 401 ? "/login" : "/login?error=no_access");
+    if (error instanceof AuthError) redirect(error.status === 401 ? "/sign-in" : "/sign-in?error=no_access");
     throw error;
   }
 }
 
 /**
  * The caller of an API route. `automation: true` marks the n8n endpoints, which also accept
- * `Authorization: Bearer $AERA_INTERNAL_API_TOKEN` for the company in AERA_AUTOMATION_COMPANY_ID.
+ * `Authorization: Bearer $KINDLYPAY_INTERNAL_API_TOKEN` for the company in KINDLYPAY_AUTOMATION_COMPANY_ID.
  */
 export async function getApiContext(request: Request, options: { automation?: boolean } = {}): Promise<RequestContext> {
   return resolveRequestContext({

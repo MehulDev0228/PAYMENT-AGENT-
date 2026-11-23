@@ -1,4 +1,4 @@
-# AERA design system
+# KindlyPay design system
 
 The source of truth for tokens is `app/globals.css`, with primitives in `components/ui.tsx`. This file explains the intent.
 

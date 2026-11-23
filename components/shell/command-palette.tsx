@@ -70,12 +70,12 @@ export function CommandPalette() {
     <>
       <button type="button" onClick={show} className="group flex min-h-10 w-full max-w-[420px] items-center gap-2.5 rounded-[10px] border border-line bg-surface px-3 text-left text-sm text-muted transition-colors hover:border-line-strong">
         <Search size={15} aria-hidden="true" />
-        <span className="flex-1 truncate">Search invoices, customers, pages…</span>
+        <span className="flex-1 truncate">Search bills, customers, pages…</span>
         <kbd className="hidden rounded-md border border-line bg-canvas px-1.5 py-0.5 font-mono text-[10.5px] text-muted sm:inline">Ctrl K</kbd>
       </button>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-ink/40 px-4 pt-[12vh] backdrop-blur-[2px]" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
-          <div role="dialog" aria-modal="true" aria-label="Command palette" className="animate-rise w-full max-w-[560px] overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_30px_80px_-20px_rgb(10_12_16/0.45)]" onKeyDown={onKeyDown}>
+        <div className="animate-fade-in fixed inset-0 z-50 flex items-start justify-center bg-ink/40 px-4 pt-[12vh] backdrop-blur-[2px]" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
+          <div role="dialog" aria-modal="true" aria-label="Command palette" className="animate-scale-in w-full max-w-[560px] overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_30px_80px_-20px_rgb(10_12_16/0.45)]" onKeyDown={onKeyDown}>
             <div className="flex items-center gap-3 border-b border-line px-4">
               <Search size={17} className="text-muted" aria-hidden="true" />
               <input ref={inputRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Try INV-1042 or a customer name"
@@ -88,13 +88,13 @@ export function CommandPalette() {
                 return (
                   <li key={entry.id} id={`palette-${entry.id}`} role="option" aria-selected={index === active}
                     onMouseEnter={() => setActive(index)} onClick={() => go(entry)}
-                    className={cx("flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5", index === active && "bg-canvas")}>
+                    className={cx("flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 transition-colors duration-100", index === active && "bg-canvas")}>
                     <span className="grid size-8 shrink-0 place-items-center rounded-lg border border-line bg-surface text-muted"><Icon size={15} aria-hidden="true" /></span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">{entry.title}</span>
                       <span className="block truncate text-[12.5px] text-muted">{entry.subtitle}</span>
                     </span>
-                    {index === active && <CornerDownLeft size={14} className="text-muted" aria-hidden="true" />}
+                    {index === active && <CornerDownLeft size={14} className="animate-fade-in text-muted" aria-hidden="true" />}
                   </li>
                 );
               })}

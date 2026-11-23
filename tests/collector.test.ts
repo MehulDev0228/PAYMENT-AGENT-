@@ -43,7 +43,7 @@ describe("CSV export", () => {
   });
 
   it("names files after the report and business date", () => {
-    expect(exportFileName("cases", "2026-09-27", "xlsx")).toBe("aera-cases-2026-09-27.xlsx");
-    expect(exportFileName("ageing-2026-09-27", "2026-09-27", "csv")).toBe("aera-ageing-2026-09-27.csv");
+    expect(exportFileName("cases", "2026-09-27", "xlsx")).toBe("kindlypay-cases-2026-09-27.xlsx");
+    expect(exportFileName("ageing-2026-09-27", "2026-09-27", "csv")).toBe("kindlypay-ageing-2026-09-27.csv");
   });
 });

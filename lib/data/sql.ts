@@ -16,7 +16,7 @@ export interface SqlDatabase extends SqlClient {
  * TLS is configured by the connection string (sslmode / sslrootcert), see README.
  */
 export function createPgDatabase(connectionString: string): SqlDatabase & { end(): Promise<void> } {
-  const pool = new Pool({ connectionString, max: Number(process.env.AERA_DB_POOL_SIZE || 5) });
+  const pool = new Pool({ connectionString, max: Number(process.env.KINDLYPAY_DB_POOL_SIZE || 5) });
   return {
     async query(text, params) {
       return (await pool.query(text, params)).rows;

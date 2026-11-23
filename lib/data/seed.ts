@@ -12,11 +12,11 @@ const regions = ["North", "South", "East", "West", "Central"];
 
 /** Demo workspace: the dev-mode manager, three collectors who own cases, and a read-only viewer. */
 const users: User[] = [
-  { id: "user-demo-manager", companyId: DEMO_COMPANY_ID, name: "Mehul Patel", email: "mehul@aera.example", role: "finance_manager", createdAt: "2025-01-01T00:00:00.000Z" },
-  { id: "user-demo-priya", companyId: DEMO_COMPANY_ID, name: "Priya Nair", email: "priya@aera.example", role: "collection_manager", createdAt: "2025-01-01T00:00:00.000Z" },
-  { id: "user-demo-arjun", companyId: DEMO_COMPANY_ID, name: "Arjun Kapoor", email: "arjun@aera.example", role: "collection_manager", createdAt: "2025-01-01T00:00:00.000Z" },
-  { id: "user-demo-neha", companyId: DEMO_COMPANY_ID, name: "Neha Gupta", email: "neha@aera.example", role: "collection_manager", createdAt: "2025-01-01T00:00:00.000Z" },
-  { id: "user-demo-viewer", companyId: DEMO_COMPANY_ID, name: "Divya Iyer", email: "divya@aera.example", role: "viewer", createdAt: "2025-01-01T00:00:00.000Z" },
+  { id: "user-demo-manager", companyId: DEMO_COMPANY_ID, name: "Mehul Patel", email: "mehul@kindlypay.example", role: "finance_manager", createdAt: "2025-01-01T00:00:00.000Z" },
+  { id: "user-demo-priya", companyId: DEMO_COMPANY_ID, name: "Priya Nair", email: "priya@kindlypay.example", role: "collection_manager", createdAt: "2025-01-01T00:00:00.000Z" },
+  { id: "user-demo-arjun", companyId: DEMO_COMPANY_ID, name: "Arjun Kapoor", email: "arjun@kindlypay.example", role: "collection_manager", createdAt: "2025-01-01T00:00:00.000Z" },
+  { id: "user-demo-neha", companyId: DEMO_COMPANY_ID, name: "Neha Gupta", email: "neha@kindlypay.example", role: "collection_manager", createdAt: "2025-01-01T00:00:00.000Z" },
+  { id: "user-demo-viewer", companyId: DEMO_COMPANY_ID, name: "Divya Iyer", email: "divya@kindlypay.example", role: "viewer", createdAt: "2025-01-01T00:00:00.000Z" },
 ];
 // Case owners in rotation; every fifth case is left unassigned for the queue.
 const caseOwners = [users[0].id, users[1].id, users[2].id, users[3].id, undefined];
@@ -180,7 +180,7 @@ export function createSeedData(): DataSet {
       scheduledAt: dateOffset(-1),
       executedAt: isEscalation ? undefined : `${dateOffset(-1)}T05:30:00.000Z`,
       status: isEscalation ? "awaiting_approval" : "executed",
-      createdBy: "aera",
+      createdBy: "kindlypay",
       createdAt: `${dateOffset(-1)}T05:25:00.000Z`,
     });
   }
@@ -258,7 +258,7 @@ export function createSeedData(): DataSet {
     reason: "Inbound email classified as payment_promise with high confidence.",
     dataSnapshot: { sourceMessageId: "msg-inv-1042-reply", promisedDate: "2026-09-29", promisedAmount: 84_000, confidence: 0.96 },
     status: "executed",
-    createdBy: "aera",
+    createdBy: "kindlypay",
     executedAt: "2026-09-25T10:30:00.000Z",
     createdAt: "2026-09-25T10:30:00.000Z",
   });
@@ -283,7 +283,7 @@ export function createSeedData(): DataSet {
     });
 
   return {
-    companies: [{ id: DEMO_COMPANY_ID, name: "AERA Demo Company", currency: "INR", timezone: "Asia/Kolkata", autonomyMode: "routine_automatic", createdAt: "2025-01-01T00:00:00.000Z" }],
+    companies: [{ id: DEMO_COMPANY_ID, name: "KindlyPay Demo Company", currency: "INR", timezone: "Asia/Kolkata", autonomyMode: "routine_automatic", createdAt: "2025-01-01T00:00:00.000Z" }],
     users: users.map((user) => ({ ...user })),
     customers,
     invoices,
@@ -295,8 +295,8 @@ export function createSeedData(): DataSet {
     followUps,
     policies: [defaultPolicy(DEMO_COMPANY_ID)],
     auditEvents: [
-      { id: "audit-seed-1042-reminder", companyId: DEMO_COMPANY_ID, actorType: "aera", eventType: "reminder_sent", entityType: "collection_case", entityId: acceptanceCase.id, reason: "Policy step due reached; routine reminder sent", dataSnapshot: { invoiceNumber: "INV-1042", amountOutstanding: 84_000, tone: "friendly" }, createdAt: "2026-09-23T05:30:01.000Z" },
-      { id: "audit-seed-1042-promise", companyId: DEMO_COMPANY_ID, actorType: "aera", eventType: "promise_recorded", entityType: "collection_case", entityId: acceptanceCase.id, reason: "Inbound reply classified as payment_promise (confidence 0.96)", dataSnapshot: { promisedDate: "2026-09-29", promisedAmount: 84_000, sourceMessageId: "msg-inv-1042-reply" }, createdAt: "2026-09-25T10:30:00.000Z" },
+      { id: "audit-seed-1042-reminder", companyId: DEMO_COMPANY_ID, actorType: "kindlypay", eventType: "reminder_sent", entityType: "collection_case", entityId: acceptanceCase.id, reason: "Policy step due reached; routine reminder sent", dataSnapshot: { invoiceNumber: "INV-1042", amountOutstanding: 84_000, tone: "friendly" }, createdAt: "2026-09-23T05:30:01.000Z" },
+      { id: "audit-seed-1042-promise", companyId: DEMO_COMPANY_ID, actorType: "kindlypay", eventType: "promise_recorded", entityType: "collection_case", entityId: acceptanceCase.id, reason: "Inbound reply classified as payment_promise (confidence 0.96)", dataSnapshot: { promisedDate: "2026-09-29", promisedAmount: 84_000, sourceMessageId: "msg-inv-1042-reply" }, createdAt: "2026-09-25T10:30:00.000Z" },
     ],
   };
 }

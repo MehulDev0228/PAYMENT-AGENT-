@@ -7,7 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { applyMigrations, createCompany, seedDemo } from "@/lib/data/db-setup";
 import { createMockRepository } from "@/lib/data/mock-repository";
 import { businessNow, createPostgresRepository } from "@/lib/data/postgres-repository";
-import { companyScope, withRegion, type AeraRepository, type DataScope, type InvoiceImportRow } from "@/lib/data/repository";
+import { companyScope, withRegion, type KindlyPayRepository, type DataScope, type InvoiceImportRow } from "@/lib/data/repository";
 import { DEMO_COMPANY_ID, DEMO_NOW } from "@/lib/data/seed";
 import type { SqlClient, SqlDatabase } from "@/lib/data/sql";
 import { upsertWorkspaceUser } from "@/lib/data/users";
@@ -58,13 +58,13 @@ async function freshPostgres() {
   return { db, repo: createPostgresRepository(db, { now: () => DEMO_NOW }) };
 }
 
-const adapters: Array<[string, () => Promise<AeraRepository>, People]> = [
+const adapters: Array<[string, () => Promise<KindlyPayRepository>, People]> = [
   ["mock", async () => createMockRepository(), MOCK_PEOPLE],
   ["postgres", async () => (await freshPostgres()).repo, PG_PEOPLE],
 ];
 
 describe.each(adapters)("%s repository", (_name, make, people) => {
-  let repo: AeraRepository;
+  let repo: KindlyPayRepository;
   beforeEach(async () => { repo = await make(); });
 
   const caseFor = async (invoiceNumber: string) => (await repo.listCases(C, { q: invoiceNumber })).find((item) => item.invoice.invoiceNumber === invoiceNumber)!;
@@ -150,7 +150,7 @@ describe.each(adapters)("%s repository", (_name, make, people) => {
       expect((await repo.listAudit(C, { entityId: (await find("INV-1042")).id, entityType: "invoice" })).some((event) => event.eventType === "invoice_synced")).toBe(false);
     });
 
-    it("never reduces the amount below payments AERA has matched", async () => {
+    it("never reduces the amount below payments KindlyPay has matched", async () => {
       await repo.importPayments(C, [{ payment_reference: "UTR-SYNC-PART", invoice_number: "INV-1042", amount: 50_000, payment_date: "2026-09-29" }]);
       const below = await repo.importInvoices(C, [await ledgerRow("INV-1042", { amount: 40_000 })], USER);
       expect(below.rows[0]).toMatchObject({ outcome: "flagged", reconciliation: "amount_below_paid" });
@@ -205,7 +205,7 @@ describe.each(adapters)("%s repository", (_name, make, people) => {
       const created = (await repo.runDailyMonitor(C)).actions;
       expect(created.every((action) => action.invoiceId === kept.id)).toBe(true);
 
-      // Settling it in AERA explains why the ERP no longer lists it.
+      // Settling it in KindlyPay explains why the ERP no longer lists it.
       await repo.importPayments(C, [{ payment_reference: "UTR-SYNC-MISSING", invoice_number: "INV-1044", amount: missing.amountOutstanding, payment_date: "2026-09-29" }]);
       expect((await find("INV-1044")).reconciliationStatus).toBeUndefined();
     });
@@ -305,7 +305,7 @@ describe.each(adapters)("%s repository", (_name, make, people) => {
     });
 
     it("does not re-queue policy steps already handled in the seed", async () => {
-      const seeded = (await repo.listActions(C)).filter((action) => action.createdBy === "aera" && action.dataSnapshot.policyStepId);
+      const seeded = (await repo.listActions(C)).filter((action) => action.createdBy === "kindlypay" && action.dataSnapshot.policyStepId);
       expect(seeded.length).toBeGreaterThan(100);
       const created = (await repo.runDailyMonitor(C)).actions;
       expect(created.some((action) => seeded.some((s) => s.invoiceId === action.invoiceId && s.dataSnapshot.policyStepId === action.dataSnapshot.policyStepId))).toBe(false);
@@ -707,8 +707,8 @@ describe("postgres adapter", () => {
     const NORTH_USER = "66666666-6666-4666-8666-666666666666";
     const ALL_USER = "77777777-7777-4777-8777-777777777777";
     for (const id of [NORTH_USER, ALL_USER]) await db.query("insert into auth.users (id) values ($1)", [id]);
-    await upsertWorkspaceUser(db, { id: NORTH_USER, companyId: C.companyId, name: "Nita North", email: "nita@aera.example", role: "viewer", regions: ["North"] });
-    await upsertWorkspaceUser(db, { id: ALL_USER, companyId: C.companyId, name: "Asha All", email: "asha@aera.example", role: "viewer" });
+    await upsertWorkspaceUser(db, { id: NORTH_USER, companyId: C.companyId, name: "Nita North", email: "nita@kindlypay.example", role: "viewer", regions: ["North"] });
+    await upsertWorkspaceUser(db, { id: ALL_USER, companyId: C.companyId, name: "Asha All", email: "asha@kindlypay.example", role: "viewer" });
     await db.exec(`create role aera_client; grant usage on schema public, auth to aera_client; grant select on all tables in schema public to aera_client;`);
     const asClient = (userId: string) => db.transaction(async (tx) => {
       await tx.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: userId, company_id: C.companyId })]);

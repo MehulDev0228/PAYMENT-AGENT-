@@ -15,7 +15,7 @@ create table public.case_follow_ups (
 create index case_follow_ups_company_case_idx on public.case_follow_ups(company_id, collection_case_id, created_at desc);
 alter table public.case_follow_ups enable row level security;
 create policy tenant_follow_ups on public.case_follow_ups for all using(company_id = public.current_company_id()) with check(company_id = public.current_company_id());
--- Region-scoped users (003_user_regions.sql) see only follow-ups on customers in their regions.
+-- Region-scoped users (005_user_regions.sql) see only follow-ups on customers in their regions.
 create policy region_follow_ups on public.case_follow_ups as restrictive for all using (public.customer_visible(customer_id)) with check (public.customer_visible(customer_id));
 
 -- Cases are owned by workspace users (public.users.id). Earlier demo seeds stored free-text names here;
